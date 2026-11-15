@@ -1,0 +1,29 @@
+% Reference centrelines for the SOFA scene, one CSV per load case.
+%   matlab -batch "run('~/sofa/thesis-scenes/matlab/run_cases.m')"
+% Writes ../matlab_refs/<case>.csv (soft-part centreline, metres, world/mesh frame).
+here = fileparts(mfilename('fullpath'));
+refs = fullfile(here, '..', 'matlab_refs');
+pose = jsondecode(fileread(fullfile(here, '..', 'poses', 'kocher_patient3.json')));
+tip = [0.005 0 -0.010];
+
+% name, gravity [m/s^2], tip force [N], use Kocher pose
+cases = {
+    'matlab_default',     [0 0 -9.81], tip,     false
+    'actuation_only',     [0 0 0],     [0 0 0], false
+    'actuation_tipforce', [0 0 0],     tip,     false
+    'hanging',            [0 0 9.81],  tip,     false
+    'kocher_head0_air',   pose.gravity.supine_head0_air.',  [0 0 0], true
+    'kocher_head0_csf',   pose.gravity.supine_head0_csf.',  [0 0 0], true
+    'kocher_head30_csf',  pose.gravity.supine_head30_csf.', [0 0 0], true
+};
+only = {};                                  % e.g. {'kocher_head0_csf'} to run a subset
+for c = 1:size(cases, 1)
+    if ~isempty(only) && ~any(strcmp(only, cases{c,1})), continue, end
+    clear CASE_P CASE_Q
+    CASE_G = cases{c,2}; CASE_F = cases{c,3};
+    if cases{c,4}
+        CASE_P = pose.base_position_m; CASE_Q = pose.base_quat_wxyz;
+    end
+    CASE_OUT = fullfile(refs, [cases{c,1} '.csv']);
+    run(fullfile(here, 'cosserat_case.m'));
+end

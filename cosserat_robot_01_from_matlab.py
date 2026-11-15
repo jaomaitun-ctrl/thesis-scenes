@@ -4,7 +4,8 @@ Soft continuum robot imported from MATLAB (cosserat_yeoh_quasistatic.m) into SOF
 Robot (same numbers as the MATLAB script):
     rigid insertion 80 mm  ->  soft section 1 (120 mm, r 6.0 mm, 3 chambers)
                            ->  soft section 2 (100 mm, r 5.5 mm, 3 chambers)
-    base frame: body x (rod tangent) -> world +Z, base at the origin.
+    base frame: body x (rod tangent) -> world +Z, base at the origin (MATLAB default),
+    or on the planned Kocher's-point trajectory (ROBOT_CASE=kocher_*).
 
 How each MATLAB ingredient maps to SOFA
 ---------------------------------------
@@ -36,15 +37,26 @@ Verified against the MATLAB solver (matlab_refs/<case>.csv, 600 steps):
                         the column (7.84*EI/L^3 ~ 0.26 N/m).  MATLAB's shooting method
                         returns the upright, UNSTABLE equilibrium; SOFA falls to the
                         stable one (tip z ~ -50 mm).
+    kocher_head0_csf    tip error 0.46 mm, centreline RMS 0.22 mm
+    kocher_head0_air    tip error 1.89 mm, centreline RMS 1.08 mm
+    kocher_head30_csf   tip error 3.28 mm, centreline RMS 1.44 mm.  Mostly lateral,
+                        i.e. twist.  About a third comes from a term this scene drops:
+                        MATLAB tilts the chamber direction with twist (t = kappa x d +
+                        sigma); with t = x in MATLAB too the error is 2.12 mm.  The
+                        rest (Yeoh vs linear, inextensible vs not, 5 mm elements) is
+                        not separated yet.
+References: matlab/run_cases.m (solver generated from cosserat_yeoh_quasistatic.m
+by tools/make_matlab_case.py; Kocher pose from tools/kocher_pose.py).
 
 Run (GUI)  -- from the SOFA checkout that has the pixi env:
     cd ~/Developer/sofa
-    ROBOT_CASE=actuation_only pixi run -e supported-plugins \
+    ROBOT_CASE=kocher_head0_csf pixi run -e supported-plugins \
         .pixi/envs/supported-plugins/bin/runSofa -l SofaPython3 \
         ~/sofa/thesis-scenes/cosserat_robot_01_from_matlab.py
 Run (headless; writes matlab_refs/<case>_sofa.csv and prints the comparison):
     add  -g batch -n 610  to the command above.
 """
+import json
 import os
 import numpy as np
 import Sofa
@@ -57,13 +69,22 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 #   actuation_only      no gravity, no tip force
 #   actuation_tipforce  no gravity, tip force
 #   hanging             gravity +Z (weight puts the rod in tension), tip force
-CASES = {
-    'matlab_default':     ([0, 0, -9.81], [0.005, 0, -0.010]),
-    'actuation_only':     ([0, 0, 0],     [0, 0, 0]),
-    'actuation_tipforce': ([0, 0, 0],     [0.005, 0, -0.010]),
-    'hanging':            ([0, 0, 9.81],  [0.005, 0, -0.010]),
+#   kocher_*            robot on the planned Kocher's-point trajectory in the patient3
+#                       mesh frame (poses/kocher_patient3.json), patient supine with the
+#                       head of bed at 0 or 30 deg; '_csf' = weight minus CSF buoyancy
+#                       (net ~4 % of the dry weight), '_air' = full weight.
+POSE = json.load(open(os.path.join(HERE, 'poses', 'kocher_patient3.json')))
+_TIP = [0.005, 0, -0.010]
+CASES = {   # name: (gravity [m/s^2], tip force [N], pose)
+    'matlab_default':     ([0, 0, -9.81], _TIP,      'matlab'),
+    'actuation_only':     ([0, 0, 0],     [0, 0, 0], 'matlab'),
+    'actuation_tipforce': ([0, 0, 0],     _TIP,      'matlab'),
+    'hanging':            ([0, 0, 9.81],  _TIP,      'matlab'),
+    'kocher_head0_air':   (POSE['gravity']['supine_head0_air'],  [0, 0, 0], 'kocher'),
+    'kocher_head0_csf':   (POSE['gravity']['supine_head0_csf'],  [0, 0, 0], 'kocher'),
+    'kocher_head30_csf':  (POSE['gravity']['supine_head30_csf'], [0, 0, 0], 'kocher'),
 }
-CASE = os.environ.get('ROBOT_CASE', 'actuation_only')
+CASE = os.environ.get('ROBOT_CASE', 'kocher_head0_csf')
 MATLAB_CENTERLINE = os.path.join(HERE, 'matlab_refs', f'{CASE}.csv')
 SOFA_CENTERLINE = os.path.join(HERE, 'matlab_refs', f'{CASE}_sofa.csv')
 
@@ -89,8 +110,13 @@ DT = 0.01                                    # [s] time step
 SOLVER = os.environ.get('ROBOT_SOLVER', 'dynamic')
 EXPORT_AT_STEP = int(os.environ.get('ROBOT_EXPORT_STEP', 600))   # write CSV + compare
 
-# MATLAB baseQuaternion [w x y z] = [cos(-pi/4) 0 sin(-pi/4) 0]  ->  SOFA [x y z w]
-BASE_QUAT = np.array([0.0, np.sin(-np.pi / 4), 0.0, np.cos(-np.pi / 4)])
+if CASES[CASE][2] == 'kocher':
+    BASE_POS = np.array(POSE['base_position_m'])          # top of the rigid insertion
+    BASE_QUAT = np.array(POSE['base_quat_xyzw'])          # body x -> insertion axis
+else:
+    # MATLAB baseQuaternion [w x y z] = [cos(-pi/4) 0 sin(-pi/4) 0]  ->  SOFA [x y z w]
+    BASE_POS = np.zeros(3)
+    BASE_QUAT = np.array([0.0, np.sin(-np.pi / 4), 0.0, np.cos(-np.pi / 4)])
 
 
 # ------------------------------------------------- MATLAB functions, ported
@@ -159,7 +185,7 @@ def build_rod():
         sec['pTarget'] = pressure_from_bend(sec, sec['bend'], sec['plane'])
     R0 = quat_to_rotm(BASE_QUAT)
     tangent = R0 @ np.array([1.0, 0.0, 0.0])
-    soft_base = ROBOT['Lrigid'] * tangent
+    soft_base = BASE_POS + ROBOT['Lrigid'] * tangent
     s, section_of_edge, node_ranges = [0.0], [], []
     for j, sec in enumerate(SECTIONS):
         n = int(round(sec['L'] / ELEMENT_LENGTH))
@@ -324,7 +350,7 @@ def createScene(root):
     rigid = root.addChild('RigidInsertion')
     rigid.addObject('CylinderVisualModel', radius=ROBOT['rigidRadius'],
                     color=[0.25, 0.28, 0.32, 1.0], edges=[[0, 1]],
-                    position=[[0, 0, 0], list(rod['soft_base'])])
+                    position=[list(BASE_POS), list(rod['soft_base'])])
 
     if os.path.exists(MATLAB_CENTERLINE):          # MATLAB final equilibrium, for overlay
         ref = root.addChild('MatlabReference')
