@@ -153,6 +153,16 @@ class VentricleNavEnv(gym.Env):
         self.root = self.Sofa.Core.Node('root')
         self.scene.createScene(self.root)
         self.Sofa.Simulation.initRoot(self.root)
+        self.attach(self.root)
+        for _ in range(2):
+            self.Sofa.Simulation.animate(self.root, self.root.dt.value)
+        st = self._state()
+        return self._obs(st), self._info(st)
+
+    def attach(self, root):
+        """Bind to an initialised scene (created here by reset(), or by runSofa for
+        rl/policy_scene.py) and set the command state of a fresh episode."""
+        self.root = root
         self.ctrl = self.root.SoftRobot.pneumatics
         self.solver = self.root.constraint_solver
         self.F = np.asarray(self.ctrl.rod['F']) * 1e3
@@ -167,23 +177,9 @@ class VentricleNavEnv(gym.Env):
         self.k_fit = np.array([[-s['bend'] / s['L'] * np.sin(s['plane']), s['bend'] / s['L'] * np.cos(s['plane'])]
                                for s in secs])                       # [1/m], body (k_y, k_z)
         self.residual = np.zeros((2, 2))
-        for _ in range(2):
-            self.Sofa.Simulation.animate(self.root, self.root.dt.value)
-        st = self._state()
-        return self._obs(st), self._info(st)
 
     def step(self, action):
-        a = np.clip(np.asarray(action, float), -1, 1)
-        L = self.ctrl.rod['s'][-1]
-        prev_depth = self.ctrl.cmd_depth
-        self.ctrl.cmd_depth = float(min(prev_depth + (0.5 + 0.5 * a[0]) * DEPTH_STEP_MM * 1e-3, L))
-        self.residual = np.clip(self.residual + a[1:].reshape(2, 2) * DKAPPA, -KAPPA_MAX, KAPPA_MAX)
-        self.kappa = self.ctrl.cmd_depth / L * self.k_fit + self.residual
-        for j in range(2):
-            m = np.linalg.norm(self.kappa[j])
-            if m > KAPPA_MAX:
-                self.kappa[j] *= KAPPA_MAX / m
-        self.ctrl.cmd_pressures = self._pressures()
+        prev_depth = self.apply_action(action)
 
         t0 = time.perf_counter()
         for _ in range(self.sim_steps):
@@ -208,6 +204,22 @@ class VentricleNavEnv(gym.Env):
         info = self._info(st)
         info['success'] = bool(success)
         return self._obs(st), float(r), terminated, truncated, info
+
+    def apply_action(self, action):
+        """Turn a policy action into the insertion depth and chamber pressures the scene
+        controller applies over the next sim_steps; returns the previous depth [m]."""
+        a = np.clip(np.asarray(action, float), -1, 1)
+        L = self.ctrl.rod['s'][-1]
+        prev_depth = self.ctrl.cmd_depth
+        self.ctrl.cmd_depth = float(min(prev_depth + (0.5 + 0.5 * a[0]) * DEPTH_STEP_MM * 1e-3, L))
+        self.residual = np.clip(self.residual + a[1:].reshape(2, 2) * DKAPPA, -KAPPA_MAX, KAPPA_MAX)
+        self.kappa = self.ctrl.cmd_depth / L * self.k_fit + self.residual
+        for j in range(2):
+            m = np.linalg.norm(self.kappa[j])
+            if m > KAPPA_MAX:
+                self.kappa[j] *= KAPPA_MAX / m
+        self.ctrl.cmd_pressures = self._pressures()
+        return prev_depth
 
     def _info(self, st):
         return dict(depth_mm=st['depth_mm'], tip_err_mm=st['tip_err'], goal_err_mm=st['goal_err'],
