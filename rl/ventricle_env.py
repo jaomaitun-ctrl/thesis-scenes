@@ -21,10 +21,11 @@ Observation (35, roughly unit scale)
     wall clearance at the tip and minimum along the inserted robot (/10 mm),
     total wall contact force (/0.05 N)
 Reward (per step)
-    + (inserted mm this step) * (W_DEPTH - W_TIP * tip error [mm])
-          tracking error is charged per mm of insertion, not per time step, so staying
-          shallow is not a free lunch; inserting pays while the tip is within
-          W_DEPTH / W_TIP (= 10 mm) of the path, retracting pays when it is further off
+    + W_DEPTH * (new depth beyond the deepest point reached so far) [mm]
+    - W_TIP   * tip error [mm] * |depth change| [mm]
+          progress is only paid once, and tracking error is charged for moving in
+          EITHER direction, so insert/retract cycling never pays (v1 paid for retracting
+          when the tip was > 10 mm off, and PPO learned to cycle); idling costs W_TIME
     - W_FORCE * total wall contact (sum of normal contact multipliers)
     - W_TIME  per step
     + SUCCESS_BONUS when fully inserted with the tip within GOAL_TOL_MM of the goal
@@ -157,6 +158,7 @@ class VentricleNavEnv(gym.Env):
         self.ctrl.cmd_pressures = self._pressures()
         self.n = 0
         self.sim_time = 0.0
+        self.max_depth_mm = 0.0
         for _ in range(2):
             self.Sofa.Simulation.animate(self.root, self.root.dt.value)
         st = self._state()
@@ -182,7 +184,10 @@ class VentricleNavEnv(gym.Env):
 
         st = self._state()
         ddepth_mm = (self.ctrl.cmd_depth - prev_depth) * 1e3
-        r = ddepth_mm * (W_DEPTH - W_TIP * st['tip_err']) - W_FORCE * st['force'] - W_TIME
+        progress_mm = max(0.0, st['depth_mm'] - self.max_depth_mm)
+        self.max_depth_mm = max(self.max_depth_mm, st['depth_mm'])
+        r = (W_DEPTH * progress_mm - W_TIP * st['tip_err'] * abs(ddepth_mm)
+             - W_FORCE * st['force'] - W_TIME)
         terminated = False
         success = st['depth_mm'] >= st['L_mm'] - 1e-6 and st['goal_err'] <= GOAL_TOL_MM
         if not st['finite'] or st['outside'] > 0:
