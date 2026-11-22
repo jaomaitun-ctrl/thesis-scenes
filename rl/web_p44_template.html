@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patient 44 Insertion</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: rgba(18, 23, 32, 0.92); --line: #263042; --text: #e6e9ef; --muted: #8d97a8;
+    --accent: #ffcc33; --ok: #36d27a;
+  }
+  :root[data-theme="light"] { --bg: #f4f6fa; --panel: rgba(255,255,255,0.94); --line: #d8dee8; --text: #1b2330; --muted: #5c6678; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    backdrop-filter: blur(6px); }
+  #info { top: 16px; left: 16px; width: 340px; max-height: calc(100% - 130px); overflow: auto; padding: 14px 16px; }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .run { display: grid; grid-template-columns: 18px 1fr; gap: 2px 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .run input { margin: 3px 0 0; accent-color: var(--c); }
+  .run .name { font-weight: 600; color: var(--c); }
+  .run .stats { grid-column: 2; display: grid; grid-template-columns: repeat(3, auto); gap: 0 12px; font-variant-numeric: tabular-nums; }
+  .stat b { display: block; font-size: 15px; }
+  .stat span { color: var(--muted); font-size: 11px; }
+  .legend { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 5px 0 0; vertical-align: -1px; }
+  .legend div { margin: 2px 0; }
+  #controls { left: 16px; right: 16px; bottom: 16px; padding: 10px 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; min-width: 74px; }
+  #slider { flex: 1 1 200px; accent-color: var(--accent); }
+  #frame { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 150px; }
+  .views { display: flex; gap: 6px; }
+  #toggle { display: none; }
+  @media (max-width: 720px) {
+    #info { left: 8px; right: 8px; top: 8px; width: auto; max-height: 45%; padding: 10px 12px; }
+    #info.collapsed .body { display: none; }
+    #toggle { display: inline-block; position: absolute; top: 8px; right: 10px; padding: 2px 8px; }
+    #controls { left: 8px; right: 8px; bottom: 8px; padding: 8px 10px; gap: 8px; }
+    #frame { min-width: 0; width: 100%; order: 5; }
+  }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="info" class="panel">
+  <button id="toggle">−</button>
+  <h1>Patient 44 · right lateral ventricle</h1>
+  <div class="sub">SOFA insertions on the lab server, replayed step by step. The robot comes out of the rigid sheath,
+    which is aimed from the Kocher point K to the frontal-horn entry F (<span id="kf"></span>).</div>
+  <div class="body">
+    <div id="runs"></div>
+    <div class="legend">
+      <div><i style="background:#ffd23f"></i>Kocher point K (OC_1 lateral end)</div>
+      <div><i style="background:#36d27a"></i>Ventricle entry F (planned path start)</div>
+      <div><i style="background:#ff4d6d"></i>Goal (planned path at 80 mm)</div>
+      <div><i style="background:#e8d28a;border-radius:2px;height:3px;width:14px;vertical-align:3px"></i>Planned path · thin lines: tip trails</div>
+      <div style="margin-top:6px">Drag to rotate, scroll or pinch to zoom, right-drag to pan. Keys: Space, ← →, 1–3.</div>
+    </div>
+  </div>
+</div>
+<div id="controls" class="panel">
+  <button id="play" class="primary">Pause</button>
+  <button id="restart">↺</button>
+  <input id="slider" type="range" min="0" value="0" step="1">
+  <span id="frame"></span>
+  <div class="views">
+    <button data-view="kocher">Kocher</button>
+    <button data-view="lateral">Right</button>
+    <button data-view="top">Top</button>
+    <button id="shell">Shell</button>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const D = /*__DATA__*/null;
+const STEP_PER_S = 12, HOLD_S = 2;
+const dark = !window.matchMedia || !window.matchMedia('(prefers-color-scheme: light)').matches;
+if (!dark) document.documentElement.dataset.theme = 'light';
+
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(dark ? 0x0b0e14 : 0xf4f6fa);
+const camera = new THREE.PerspectiveCamera(36, 1, 1, 3000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x202530, 0.75));
+const key = new THREE.DirectionalLight(0xffffff, 0.8); key.position.set(-1, 2, -1.2); scene.add(key);
+const fill = new THREE.DirectionalLight(0x9fc4ff, 0.35); fill.position.set(1.5, -0.5, 1); scene.add(fill);
+
+const v3 = a => new THREE.Vector3(a[0], a[1], a[2]);
+
+// ventricle shell
+const g = new THREE.BufferGeometry();
+g.setAttribute('position', new THREE.Float32BufferAttribute(D.mesh.vertices.flat(), 3));
+g.setIndex(D.mesh.faces);
+g.computeVertexNormals();
+const shellMat = new THREE.MeshPhongMaterial({ color: 0x3fb6d8, transparent: true, opacity: 0.2,
+  side: THREE.DoubleSide, depthWrite: false, shininess: 30 });
+const shell = new THREE.Mesh(g, shellMat);
+scene.add(shell);
+const wire = new THREE.LineSegments(new THREE.EdgesGeometry(g, 25),
+  new THREE.LineBasicMaterial({ color: 0x3fb6d8, transparent: true, opacity: 0.18 }));
+scene.add(wire);
+
+function tubeGeom(points, radius) {
+  const curve = new THREE.CatmullRomCurve3(points.map(v3), false, 'centripetal');
+  return new THREE.TubeGeometry(curve, Math.max(points.length * 3, 8), radius, 16, false);
+}
+function tube(points, radius, color, opts = {}) {
+  return new THREE.Mesh(tubeGeom(points, radius), new THREE.MeshPhongMaterial(Object.assign({ color, shininess: 60 }, opts)));
+}
+function ball(p, r, color) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), new THREE.MeshPhongMaterial({ color, shininess: 80 }));
+  m.position.copy(v3(p)); scene.add(m); return m;
+}
+function line(points, color, opacity = 1) {
+  const geom = new THREE.BufferGeometry().setFromPoints(points.map(v3));
+  const l = new THREE.Line(geom, new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity }));
+  scene.add(l); return l;
+}
+
+scene.add(tube([D.sheathBase, D.F], D.sheathRadius, 0xb8c0cc, { transparent: true, opacity: 0.35, depthWrite: false }));
+ball(D.K, 3, 0xffd23f); ball(D.F, 2.3, 0x36d27a); ball(D.goal, 2.3, 0xff4d6d);
+scene.add(tube(D.path, 0.45, 0xe8d28a));
+D.sutures.forEach(s => line(s, 0xdfe3ea, 0.7));
+document.getElementById('kf').textContent = `${D.kocherToF} mm, K ${D.kocherOffAxis} mm off the sheath axis`;
+
+// runs
+const runsEl = document.getElementById('runs');
+const runs = D.runs.map((r, i) => {
+  const mat = new THREE.MeshPhongMaterial({ color: r.colour, shininess: 70 });
+  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+  const trailGeom = new THREE.BufferGeometry();
+  trailGeom.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(r.frames.length * 3), 3));
+  const trail = new THREE.Line(trailGeom, new THREE.LineBasicMaterial({ color: r.colour, transparent: true, opacity: 0.8 }));
+  scene.add(mesh); scene.add(trail);
+  r.frames.forEach((f, k) => trailGeom.attributes.position.setXYZ(k, ...f[f.length - 1]));
+  const row = document.createElement('div');
+  row.className = 'run'; row.style.setProperty('--c', r.colour);
+  row.innerHTML = `<input type="checkbox" ${r.shown ? 'checked' : ''} aria-label="${r.label}">
+    <div class="name">${i + 1} · ${r.label}</div>
+    <div class="stats">
+      <div class="stat"><b data-k="tip">–</b><span>tip → goal</span></div>
+      <div class="stat"><b>${r.goalErr.toFixed(1)} mm</b><span>final goal error</span></div>
+      <div class="stat"><b>${r.rodDev.toFixed(1)} mm</b><span>rod off path</span></div>
+    </div>`;
+  runsEl.appendChild(row);
+  const box = row.querySelector('input');
+  const o = { r, mesh, trail, box, tipEl: row.querySelector('[data-k="tip"]'), shown: r.shown, last: -1 };
+  box.addEventListener('change', () => { o.shown = box.checked; mesh.visible = trail.visible = o.shown; });
+  mesh.visible = trail.visible = o.shown;
+  return o;
+});
+
+const nFrames = Math.max(...D.runs.map(r => r.frames.length));
+const slider = document.getElementById('slider');
+slider.max = nFrames - 1;
+const frameEl = document.getElementById('frame');
+let playing = true, clock = 0;
+
+function show(f) {
+  f = Math.max(0, Math.min(nFrames - 1, f | 0));
+  for (const o of runs) {
+    const k = Math.min(f, o.r.frames.length - 1);
+    o.tipEl.textContent = `${o.r.tipGoal[k].toFixed(1)} mm`;
+    if (o.last === k) continue;
+    o.last = k;
+    o.mesh.geometry.dispose();
+    o.mesh.geometry = tubeGeom(o.r.frames[k], D.robotRadius);
+    o.trail.geometry.setDrawRange(0, k + 1);
+  }
+  const d = D.runs[0].depth[Math.min(f, D.runs[0].depth.length - 1)];
+  frameEl.textContent = `step ${f} / ${nFrames - 1} · inserted ${d.toFixed(0)} mm`;
+  slider.value = f;
+}
+
+const playBtn = document.getElementById('play');
+function setPlaying(p) { playing = p; playBtn.textContent = p ? 'Pause' : 'Play'; }
+playBtn.onclick = () => setPlaying(!playing);
+document.getElementById('restart').onclick = () => { clock = 0; setPlaying(true); };
+slider.oninput = () => { setPlaying(false); clock = +slider.value / STEP_PER_S; };
+document.getElementById('shell').onclick = () => {
+  const lvl = [0.2, 0.45, 0.05];
+  const i = (lvl.indexOf(shellMat.opacity) + 1) % lvl.length;
+  shellMat.opacity = lvl[i]; wire.visible = lvl[i] > 0.06;
+};
+document.getElementById('toggle').onclick = e => {
+  const c = document.getElementById('info').classList.toggle('collapsed');
+  e.target.textContent = c ? '+' : '−';
+};
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') { setPlaying(!playing); e.preventDefault(); }
+  else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    setPlaying(false);
+    const f = Math.round(clock * STEP_PER_S) + (e.key === 'ArrowRight' ? 1 : -1);
+    clock = Math.max(0, Math.min(nFrames - 1, f)) / STEP_PER_S;
+  } else if (/^[1-9]$/.test(e.key) && runs[+e.key - 1]) {
+    const o = runs[+e.key - 1]; o.box.checked = !o.box.checked; o.box.dispatchEvent(new Event('change'));
+  }
+});
+
+// camera presets (scene frame: x = patient right, y = superior, z = posterior)
+const box = new THREE.Box3().setFromObject(shell).expandByPoint(v3(D.K)).expandByPoint(v3(D.sheathBase));
+const centre = box.getCenter(new THREE.Vector3());
+const radius = box.getSize(new THREE.Vector3()).length() / 2;
+const VIEWS = { kocher: [0.9, 0.45, -0.55], lateral: [1, 0.05, 0], top: [0.01, 1, -0.05] };
+function setView(name) {
+  const dir = new THREE.Vector3(...VIEWS[name]).normalize();
+  const dist = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * (camera.aspect < 1 ? 1.5 : 1.05);
+  camera.position.copy(centre).addScaledVector(dir, dist);
+  controls.target.copy(centre); camera.up.set(0, 1, 0); controls.update();
+}
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h); camera.aspect = w / h;
+  // keep the anatomy clear of the info panel on wide screens
+  if (w > 720) camera.setViewOffset(w, h, -Math.min(180, w * 0.15), 0, w, h); else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize(); setView('kocher'); show(0);
+
+let prev = performance.now();
+renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  const dt = Math.max(0, Math.min((now - prev) / 1000, 0.1)); prev = now;
+  if (!Number.isFinite(clock)) clock = 0;
+  if (playing) { clock += dt; if (clock > (nFrames - 1) / STEP_PER_S + HOLD_S) clock = 0; }
+  show(Math.min(Math.floor(clock * STEP_PER_S), nFrames - 1));
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
