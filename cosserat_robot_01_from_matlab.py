@@ -28,23 +28,29 @@ MATLAB (Cosserat ODE + shooting)       SOFA (this scene)
                                        stiffness)
 - rigid insertion                      fixed first frame + display cylinder
 
-Verified against the MATLAB solver (matlab_refs/<case>.csv, 600 steps):
-    actuation_only      tip error 0.14 mm, centreline RMS 0.06 mm
-    actuation_tipforce  tip error 1.35 mm, centreline RMS 0.47 mm
-    hanging             tip error 0.98 mm, centreline RMS 0.59 mm
+Verified against the MATLAB solver (matlab_refs/<case>.csv, 600 steps, Yeoh-equivalent
+actuation on):
+    actuation_only      tip error 0.04 mm, centreline RMS 0.02 mm
+    actuation_tipforce  tip error 1.46 mm, centreline RMS 0.53 mm
+    hanging             tip error 0.94 mm, centreline RMS 0.58 mm
     matlab_default      DOES NOT MATCH, and should not: the robot points up and its
                         own weight (~1.1 N/m) is ~4x the self-weight buckling load of
                         the column (7.84*EI/L^3 ~ 0.26 N/m).  MATLAB's shooting method
                         returns the upright, UNSTABLE equilibrium; SOFA falls to the
                         stable one (tip z ~ -50 mm).
-    kocher_head0_csf    tip error 0.46 mm, centreline RMS 0.22 mm
-    kocher_head0_air    tip error 1.89 mm, centreline RMS 1.08 mm
-    kocher_head30_csf   tip error 3.28 mm, centreline RMS 1.44 mm.  Mostly lateral,
+    kocher_head0_csf    tip error 0.34 mm, centreline RMS 0.17 mm
+    kocher_head0_air    tip error 1.85 mm, centreline RMS 1.07 mm
+    kocher_head30_csf   tip error 3.36 mm, centreline RMS 1.46 mm.  Mostly lateral,
                         i.e. twist.  About a third comes from a term this scene drops:
                         MATLAB tilts the chamber direction with twist (t = kappa x d +
                         sigma); with t = x in MATLAB too the error is 2.12 mm.  The
                         rest (Yeoh vs linear, inextensible vs not, 5 mm elements) is
                         not separated yet.
+    design_patient44_right_{nogravity,csf}
+                        RESIZED robot (25 + 55 mm, fitted to the 80 patient paths)
+                        bent 77 deg / 88 deg: tip error 0.07 mm, RMS 0.05 mm.  Needs
+                        the Yeoh-equivalent actuation: at 32 % fibre strain the linear
+                        beam alone over-bends section 1 by ~9 deg (tip error 7.6 mm).
 References: matlab/run_cases.m (solver generated from cosserat_yeoh_quasistatic.m
 by tools/make_matlab_case.py; Kocher pose from tools/kocher_pose.py).
 
@@ -84,6 +90,15 @@ CASES = {   # name: (gravity [m/s^2], tip force [N], pose)
     'kocher_head0_csf':   (POSE['gravity']['supine_head0_csf'],  [0, 0, 0], 'kocher'),
     'kocher_head30_csf':  (POSE['gravity']['supine_head30_csf'], [0, 0, 0], 'kocher'),
 }
+#   design_*            robot RESIZED to fit the patient paths (tools/fit_robot_design.py),
+#                       placed on one patient's Kocher->F axis with that patient's fitted
+#                       bends; everything comes from poses/design_*.json (made by
+#                       tools/make_design_cases.py), which the MATLAB runner reads too.
+DESIGN = {}
+for _f in sorted(os.listdir(os.path.join(HERE, 'poses'))):
+    if _f.startswith('design_') and _f.endswith('.json'):
+        DESIGN[_f[:-5]] = json.load(open(os.path.join(HERE, 'poses', _f)))
+        CASES[_f[:-5]] = (DESIGN[_f[:-5]]['gravity'], [0, 0, 0], 'design')
 CASE = os.environ.get('ROBOT_CASE', 'kocher_head0_csf')
 MATLAB_CENTERLINE = os.path.join(HERE, 'matlab_refs', f'{CASE}.csv')
 SOFA_CENTERLINE = os.path.join(HERE, 'matlab_refs', f'{CASE}_sofa.csv')
@@ -108,11 +123,21 @@ DT = 0.01                                    # [s] time step
 # 'dynamic': implicit Euler + Rayleigh damping, run until it settles (robust; the
 #            equilibrium reached is the STABLE one).  'static': Newton per step.
 SOLVER = os.environ.get('ROBOT_SOLVER', 'dynamic')
+# Map chamber moments through the Yeoh law onto the linear beam (see actuation_moment_body)
+YEOH_EQUIVALENT_ACTUATION = os.environ.get('ROBOT_YEOH_ACTUATION', '1') == '1'
 EXPORT_AT_STEP = int(os.environ.get('ROBOT_EXPORT_STEP', 600))   # write CSV + compare
 
 if CASES[CASE][2] == 'kocher':
     BASE_POS = np.array(POSE['base_position_m'])          # top of the rigid insertion
     BASE_QUAT = np.array(POSE['base_quat_xyzw'])          # body x -> insertion axis
+elif CASES[CASE][2] == 'design':
+    _d = DESIGN[CASE]
+    BASE_POS = np.array(_d['base_position_m'])
+    BASE_QUAT = np.array(_d['base_quat_xyzw'])
+    for _sec, _s in zip(SECTIONS, _d['sections']):
+        _sec.update(L=_s['L_m'], bend=_s['bend_rad'], plane=_s['plane_rad'])
+    # short, strongly bent sections: 2 mm elements (>= 10 per section)
+    ELEMENT_LENGTH = min(0.002, min(s['L_m'] for s in _d['sections']) / 10)
 else:
     # MATLAB baseQuaternion [w x y z] = [cos(-pi/4) 0 sin(-pi/4) 0]  ->  SOFA [x y z w]
     BASE_POS = np.zeros(3)
@@ -159,10 +184,21 @@ def pressure_from_bend(sec, bend_angle, bending_plane):
 
 
 def actuation_moment_body(sec, p):
-    """Moment part of actuationWrench() with t = body x: sum_i (d_i x x) tau_i."""
+    """Moment part of actuationWrench() with t = body x: sum_i (d_i x x) tau_i.
+
+    With YEOH_EQUIVALENT_ACTUATION the moment is mapped through the Yeoh bending law
+    before it reaches the LINEAR beam: M_lin = E0*I * k_Yeoh(|M|), so free (actuation-only)
+    bending gives exactly the Yeoh curvature.  Response to external loads stays linear.
+    Matters above ~10 % fibre strain (11 % stiffer at 32 %); negligible below.
+    """
     tau = p * sec['Ain']
     d = sec['d']
-    return np.array([0.0, np.sum(d[2] * tau), -np.sum(d[1] * tau)])
+    m = np.array([0.0, np.sum(d[2] * tau), -np.sum(d[1] * tau)])
+    mag = np.linalg.norm(m)
+    if YEOH_EQUIVALENT_ACTUATION and mag > 0:
+        k = np.interp(mag, sec['MTab'], sec['kTab'])
+        m *= sec['E0'] * np.pi * sec['radius'] ** 4 / 4 * k / mag
+    return m
 
 
 def quat_to_rotm(q):
@@ -279,7 +315,7 @@ class PneumaticFollowerController(Sofa.Core.Controller):
         print(f'[cosserat_robot] MATLAB tip [mm] = {np.array2string(1e3 * ref[-1], precision=2)}')
         print(f'[cosserat_robot] tip error = {1e3 * err[-1]:.2f} mm, '
               f'centreline RMS = {1e3 * np.sqrt(np.mean(err ** 2)):.2f} mm, '
-              f'max = {1e3 * err.max():.2f} mm  (soft length 220 mm)')
+              f'max = {1e3 * err.max():.2f} mm  (soft length {1e3 * self.rod["s"][-1]:.0f} mm)')
 
 
 # --------------------------------------------------------------------- scene

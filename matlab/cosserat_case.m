@@ -54,6 +54,7 @@ if exist('CASE_Q','var'), robot.baseQuaternion = CASE_Q(:); end
 % your own material tests (uniaxial tension fit).
 sec(1) = makeSection(0.120, 6.0e-3, [58.3e3, 5e3, 0.5e3], 1050, 3.5e-3, 2.0e-3, 3);
 sec(2) = makeSection(0.100, 5.5e-3, [41.7e3, 4e3, 0.4e3], 1050, 3.2e-3, 1.8e-3, 3);
+if exist('CASE_L','var'), sec(1).L = CASE_L(1); sec(2).L = CASE_L(2); end
 
 %% 2) Final pressure command ---------------------------------------------
 % Option A: set gauge pressures [Pa] per chamber directly.
@@ -61,6 +62,7 @@ sec(2) = makeSection(0.100, 5.5e-3, [41.7e3, 4e3, 0.4e3], 1050, 3.2e-3, 1.8e-3, 
 % M(k) (exact for the unloaded, planar-moment balance; loaded shape differs).
 pTarget{1} = pressureFromBend(sec(1), deg2rad(35), deg2rad(0));
 pTarget{2} = pressureFromBend(sec(2), deg2rad(50), deg2rad(70));
+if exist('CASE_BEND','var'), for jj = 1:2, pTarget{jj} = pressureFromBend(sec(jj), CASE_BEND(jj,1), CASE_BEND(jj,2)); end, end
 
 %% 3) Loads, time stepping, numerical settings ---------------------------
 loadData.gravity = CASE_G(:);

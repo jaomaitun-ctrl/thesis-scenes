@@ -19,11 +19,26 @@ cases = {
 only = {};                                  % e.g. {'kocher_head0_csf'} to run a subset
 for c = 1:size(cases, 1)
     if ~isempty(only) && ~any(strcmp(only, cases{c,1})), continue, end
-    clear CASE_P CASE_Q
+    clear CASE_P CASE_Q CASE_L CASE_BEND
     CASE_G = cases{c,2}; CASE_F = cases{c,3};
     if cases{c,4}
         CASE_P = pose.base_position_m; CASE_Q = pose.base_quat_wxyz;
     end
     CASE_OUT = fullfile(refs, [cases{c,1} '.csv']);
+    run(fullfile(here, 'cosserat_case.m'));
+end
+
+% Resized-robot cases: poses/design_*.json (tools/make_design_cases.py)
+designs = dir(fullfile(here, '..', 'poses', 'design_*.json'));
+for c = 1:numel(designs)
+    name = erase(designs(c).name, '.json');
+    if ~isempty(only) && ~any(strcmp(only, name)), continue, end
+    dz = jsondecode(fileread(fullfile(designs(c).folder, designs(c).name)));
+    clear CASE_P CASE_Q CASE_L CASE_BEND
+    CASE_G = dz.gravity(:).'; CASE_F = [0 0 0];
+    CASE_P = dz.base_position_m; CASE_Q = dz.base_quat_wxyz;
+    CASE_L = [dz.sections.L_m];
+    CASE_BEND = [[dz.sections.bend_rad].', [dz.sections.plane_rad].'];
+    CASE_OUT = fullfile(refs, [name '.csv']);
     run(fullfile(here, 'cosserat_case.m'));
 end
