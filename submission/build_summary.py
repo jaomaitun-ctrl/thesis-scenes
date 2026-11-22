@@ -141,7 +141,7 @@ story += [
       '<font face="Courier">rl/train_supervised.sh</font>; notebook <font face="Courier">submission/ventricle_rl_ppo.ipynb</font> '
       'regenerates every figure and table from the included logs and rollouts without SOFA. '
       '<font face="Courier">submission/ENVIRONMENT.md</font> pins SOFA (commit a4d4962a, v26.06), Python 3.12.13, '
-      'torch 2.7.1, stable-baselines3 2.6.0 and gymnasium 1.1.1, with build and run commands. Patient data are private.'),
+      'torch 2.7.1, stable-baselines3 2.6.0 and gymnasium 1.1.1, with build and run commands. Patient 44 data are shared with permission; the full dataset is not included.'),
 ]
 
 doc = SimpleDocTemplate('summary.pdf', pagesize=A4, leftMargin=1.6 * cm, rightMargin=1.6 * cm,

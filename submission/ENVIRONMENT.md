@@ -46,14 +46,16 @@ Then, in `thesis-scenes`, install the RL packages into `.pydeps` as described at
 - macOS: `rl/run.sh <script>` (uses `python-sofa`; plain `python` crashes when importing Sofa)
 - Linux: `rl/run_server.sh <script>` (plain env python; edit the SOFA path at the top)
 
-## Data (private, not redistributable)
+## Data
 
 Patient data come from the senior project's MRI-derived dataset (40 patients × left/right):
 planned paths `paths/<patient>_<side>.csv`, ventricle meshes `ventricles/<patient>_<side>.stl`,
 and Slicer fiducials `kochers/<patient>/` (coronal suture `OC*`, ventricle entry `F*`).
 Paths in `poses/design_*.json` point to that dataset and must be edited to its location.
 This study trains and tests on **patient 44, right side** only. The results in `results/`
-contain that patient's path and wall vertices; keep this repository private.
+contain that patient's path and wall vertices, shared with the data owners' permission.
+The other 79 paths, the meshes and the fiducials are not part of this repository; ask the
+project authors for access.
 
 ## Commands that produced the results
 

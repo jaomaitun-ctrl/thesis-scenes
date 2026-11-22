@@ -20,4 +20,4 @@ jupyter notebook ventricle_rl_ppo.ipynb
 
 To rebuild the PDF, run the notebook first, then `pip install reportlab pypdfium2 && python build_summary.py`.
 
-Patient data (patient 44's path and wall) are included in `results/`. Keep the repository private.
+Patient 44's planned path and ventricle wall are included in `results/` and in the figures, shared with the data owners' permission. The full 80-path dataset is not included.
