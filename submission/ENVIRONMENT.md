@@ -51,11 +51,12 @@ Then, in `thesis-scenes`, install the RL packages into `.pydeps` as described at
 Patient data come from the senior project's MRI-derived dataset (40 patients × left/right):
 planned paths `paths/<patient>_<side>.csv`, ventricle meshes `ventricles/<patient>_<side>.stl`,
 and Slicer fiducials `kochers/<patient>/` (coronal suture `OC*`, ventricle entry `F*`).
-Paths in `poses/design_*.json` point to that dataset and must be edited to its location.
-This study trains and tests on **patient 44, right side** only. The results in `results/`
-contain that patient's path and wall vertices, shared with the data owners' permission.
-The other 79 paths, the meshes and the fiducials are not part of this repository; ask the
-project authors for access.
+This study trains and tests on **patient 44, right side** only. That patient's files are in
+the repository, shared with the data owners' permission, in the dataset's own layout under
+`data/patients_dataset/` (path, closed ventricle mesh, Slicer fiducials). The collision wall with
+the entry hole is `walls/patient44_right_entryhole.stl` (made by `tools/ventricle_wall.py`), and
+`poses/design_patient44_right_*.json` refer to the path relative to the repository root.
+The other 79 patients' data are not included; ask the project authors for access.
 
 ## Commands that produced the results
 

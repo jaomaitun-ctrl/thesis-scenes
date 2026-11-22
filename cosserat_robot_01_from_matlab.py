@@ -112,6 +112,8 @@ DESIGN = {}
 for _f in sorted(os.listdir(os.path.join(HERE, 'poses'))):
     if _f.startswith('design_') and _f.endswith('.json'):
         DESIGN[_f[:-5]] = json.load(open(os.path.join(HERE, 'poses', _f)))
+        if not os.path.isabs(DESIGN[_f[:-5]].get('ref_path_file', '/')):   # repo-relative (data/)
+            DESIGN[_f[:-5]]['ref_path_file'] = os.path.join(HERE, DESIGN[_f[:-5]]['ref_path_file'])
         CASES[_f[:-5]] = (DESIGN[_f[:-5]]['gravity'], [0, 0, 0], 'design')
 CASE = os.environ.get('ROBOT_CASE', 'kocher_head0_csf')
 MATLAB_CENTERLINE = os.path.join(HERE, 'matlab_refs', f'{CASE}.csv')
