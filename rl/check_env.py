@@ -14,9 +14,9 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ventricle_env import VentricleNavEnv, DKAPPA  # noqa: E402
+from ventricle_env import VentricleNavEnv  # noqa: E402
 
-MAX_STEPS = int(sys.argv[1]) if len(sys.argv) > 1 else 100
+MAX_STEPS = int(sys.argv[1]) if len(sys.argv) > 1 else 250
 
 
 def run(env, policy, label):
@@ -44,16 +44,12 @@ def main():
     rng = np.random.default_rng(0)
     run(env, lambda o, i: rng.uniform(-1, 1, 5), 'random')
 
-    # scripted: target curvature vectors from the fitted design, scaled with depth
-    secs = env.scene.SECTIONS
-    k_fit = np.array([[-s['bend'] / s['L'] * np.sin(s['plane']), s['bend'] / s['L'] * np.cos(s['plane'])]
-                      for s in secs])
-
-    def scripted(o, i):
-        frac = min(1.0, (i['depth_mm'] + 1.0) / (env.ctrl.rod['s'][-1] * 1e3))
-        dk = np.clip((frac * k_fit - env.kappa) / DKAPPA, -1, 1)
-        return np.r_[1.0, dk.ravel()]
-    run(env, scripted, 'scripted')
+    # nominal: zero action = scripted schedule (fitted bends ramped with depth) at 0.5 mm/step
+    run(env, lambda o, i: np.zeros(5), 'nominal')
+    # full speed, no steering
+    run(env, lambda o, i: np.r_[1.0, np.zeros(4)], 'fast')
+    # idle: never insert
+    run(env, lambda o, i: np.r_[-1.0, np.zeros(4)], 'idle')
     env.close()
 
 

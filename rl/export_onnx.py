@@ -87,6 +87,7 @@ def main():
                                       chamber_offset_mm=1e3 * s['chamberOffset'],
                                       chamber_radius_mm=1e3 * s['chamberRadius'], n_chambers=s['nChambers'],
                                       yeoh_C_Pa=list(s['yeoh'])) for s in env.scene.SECTIONS]),
+            kappa_fit_per_mm=(env.k_fit / 1e3).tolist(),
             constants=dict(DEPTH_STEP_MM=ve.DEPTH_STEP_MM, DKAPPA_per_mm=ve.DKAPPA / 1e3,
                            KAPPA_MAX_per_mm=ve.KAPPA_MAX / 1e3, GOAL_TOL_MM=ve.GOAL_TOL_MM,
                            N_SHAPE_POINTS=ve.N_SHAPE_POINTS, control_period_s=env.sim_steps * env.root.dt.value))
@@ -121,9 +122,10 @@ def main():
         ],
         observation_clip=[-10, 10],
         action=[
-            dict(index=0, name='insertion depth change', meaning='depth += a * DEPTH_STEP_MM, clipped to [0, 80] mm'),
-            dict(index=[1, 3], name='section-1 curvature change', meaning='k1 += a * DKAPPA, |k1| <= KAPPA_MAX'),
-            dict(index=[3, 5], name='section-2 curvature change', meaning='k2 += a * DKAPPA, |k2| <= KAPPA_MAX'),
+            dict(index=0, name='insertion speed', meaning='depth += DEPTH_STEP_MM * (0.5 + 0.5 a), capped at 80 mm (no retraction)'),
+            dict(index=[1, 3], name='section-1 curvature correction change', meaning='c1 = clip(c1 + a * DKAPPA, +-KAPPA_MAX)'),
+            dict(index=[3, 5], name='section-2 curvature correction change', meaning='c2 = clip(c2 + a * DKAPPA, +-KAPPA_MAX)'),
+            dict(index='all', name='commanded curvature', meaning='k_j = (depth / 80 mm) * kappa_fit_j + c_j, |k_j| <= KAPPA_MAX; kappa_fit in this file'),
         ],
         actuation=('A curvature command is a desired FREE bend (constant curvature per section). '
                    'The SOFA env turns it into chamber pressures with the Yeoh moment law '

@@ -9,28 +9,29 @@ Run with SOFA's own interpreter (rl/run.sh sets this up):
 The scene module reads its configuration from environment variables at import time, so one
 process holds one (case, wall) configuration; use subprocess vector envs for parallelism.
 
-Action  a in [-1, 1]^5
-    a[0]      change of insertion depth            (+-DEPTH_STEP_MM per step; retract allowed)
-    a[1:3]    change of section-1 curvature vector (kappa_y, kappa_z) in body axes
-    a[3:5]    change of section-2 curvature vector
-    curvatures are clipped to |kappa| <= KAPPA_MAX and turned into chamber pressures with the
-    Yeoh moment law (pressureFromBend), i.e. the action space is "desired free bend".
+Action  a in [-1, 1]^5   (v3: RESIDUAL around a nominal schedule, forward-only insertion)
+    a[0]      insertion speed: depth += DEPTH_STEP_MM * (0.5 + 0.5 a[0])   (0..1 mm per step)
+    a[1:3]    change of the section-1 curvature CORRECTION (kappa_y, kappa_z) in body axes
+    a[3:5]    change of the section-2 curvature correction
+    commanded curvature = (depth / L) * kappa_fit + correction, |kappa| <= KAPPA_MAX, where
+    kappa_fit are the bends fitted to this patient's path (the scripted schedule).  So the
+    zero action reproduces the scripted insertion at 0.5 mm/step; the policy learns to steer
+    it.  Curvatures become chamber pressures with the Yeoh moment law (pressureFromBend).
 Observation (35, roughly unit scale)
     tip - goal, tip - path point at the current depth (both /50 mm), tip direction,
     depth / L, curvature commands / KAPPA_MAX, 6 robot points relative to F (/50 mm),
     wall clearance at the tip and minimum along the inserted robot (/10 mm),
     total wall contact force (/0.05 N)
 Reward (per step)
-    + W_DEPTH * (new depth beyond the deepest point reached so far) [mm]
-    - W_TIP   * tip error [mm] * |depth change| [mm]
-          progress is only paid once, and tracking error is charged for moving in
-          EITHER direction, so insert/retract cycling never pays (v1 paid for retracting
-          when the tip was > 10 mm off, and PPO learned to cycle); idling costs W_TIME
+    + W_DEPTH * inserted mm this step
+    - W_TIP   * tip error to the path point at the current depth [mm]
     - W_FORCE * total wall contact (sum of normal contact multipliers)
-    - W_TIME  per step
-    + SUCCESS_BONUS when fully inserted with the tip within GOAL_TOL_MM of the goal
-    - FAIL_PENALTY  (and terminate) if the robot leaves the lumen or the state blows up
-    (shape error is reported in info but not rewarded yet)
+    - W_TIME
+    end of episode when fully inserted: + SUCCESS_BONUS * exp(-goal error / GOAL_SCALE_MM)
+    leaving the lumen / non-finite state: - FAIL_PENALTY, terminate
+    Completing the insertion always beats stalling (the scripted schedule, 37 mm off,
+    still scores above an idle robot), so the "don't insert" optimum of v2 is gone; there is
+    no retraction, so the insert/retract cycling of v1 is impossible.
 """
 import importlib
 import os
@@ -51,8 +52,9 @@ from gymnasium import spaces  # noqa: E402
 DEPTH_STEP_MM = 1.0
 DKAPPA = 0.01e3          # [1/m] curvature change per step at |a| = 1 (0.01 1/mm)
 KAPPA_MAX = 0.12e3       # [1/m] ~1.4 x the largest curvature fitted to the 80 paths
-W_DEPTH, W_TIP, W_FORCE, W_TIME = 0.2, 0.02, 20.0, 0.01
+W_DEPTH, W_TIP, W_FORCE, W_TIME = 0.2, 0.002, 20.0, 0.01
 SUCCESS_BONUS, FAIL_PENALTY = 10.0, 10.0
+GOAL_SCALE_MM = 10.0
 GOAL_TOL_MM = 3.0
 N_SHAPE_POINTS = 6
 
@@ -158,7 +160,10 @@ class VentricleNavEnv(gym.Env):
         self.ctrl.cmd_pressures = self._pressures()
         self.n = 0
         self.sim_time = 0.0
-        self.max_depth_mm = 0.0
+        secs = self.scene.SECTIONS
+        self.k_fit = np.array([[-s['bend'] / s['L'] * np.sin(s['plane']), s['bend'] / s['L'] * np.cos(s['plane'])]
+                               for s in secs])                       # [1/m], body (k_y, k_z)
+        self.residual = np.zeros((2, 2))
         for _ in range(2):
             self.Sofa.Simulation.animate(self.root, self.root.dt.value)
         st = self._state()
@@ -168,8 +173,9 @@ class VentricleNavEnv(gym.Env):
         a = np.clip(np.asarray(action, float), -1, 1)
         L = self.ctrl.rod['s'][-1]
         prev_depth = self.ctrl.cmd_depth
-        self.ctrl.cmd_depth = float(np.clip(prev_depth + a[0] * DEPTH_STEP_MM * 1e-3, 0.0, L))
-        self.kappa += a[1:].reshape(2, 2) * DKAPPA
+        self.ctrl.cmd_depth = float(min(prev_depth + (0.5 + 0.5 * a[0]) * DEPTH_STEP_MM * 1e-3, L))
+        self.residual = np.clip(self.residual + a[1:].reshape(2, 2) * DKAPPA, -KAPPA_MAX, KAPPA_MAX)
+        self.kappa = self.ctrl.cmd_depth / L * self.k_fit + self.residual
         for j in range(2):
             m = np.linalg.norm(self.kappa[j])
             if m > KAPPA_MAX:
@@ -184,17 +190,15 @@ class VentricleNavEnv(gym.Env):
 
         st = self._state()
         ddepth_mm = (self.ctrl.cmd_depth - prev_depth) * 1e3
-        progress_mm = max(0.0, st['depth_mm'] - self.max_depth_mm)
-        self.max_depth_mm = max(self.max_depth_mm, st['depth_mm'])
-        r = (W_DEPTH * progress_mm - W_TIP * st['tip_err'] * abs(ddepth_mm)
-             - W_FORCE * st['force'] - W_TIME)
+        r = W_DEPTH * ddepth_mm - W_TIP * st['tip_err'] - W_FORCE * st['force'] - W_TIME
         terminated = False
-        success = st['depth_mm'] >= st['L_mm'] - 1e-6 and st['goal_err'] <= GOAL_TOL_MM
+        done = st['depth_mm'] >= st['L_mm'] - 1e-6
+        success = done and st['goal_err'] <= GOAL_TOL_MM
         if not st['finite'] or st['outside'] > 0:
             r -= FAIL_PENALTY
             terminated = True
-        elif success:
-            r += SUCCESS_BONUS
+        elif done:
+            r += SUCCESS_BONUS * np.exp(-st['goal_err'] / GOAL_SCALE_MM)
             terminated = True
         truncated = self.n >= self.max_steps
         info = self._info(st)
