@@ -70,6 +70,10 @@ Ventricle wall + insertion (design_* cases; wall from tools/ventricle_wall.py):
     patient44_right, r = 3 mm, 10 mm/s, final bends ramped with depth: 80 mm inserted in
     41 s wall time; stays in the lumen, no penetration of the wall; settles 14.6 mm (mean)
     from the planned path - the scripted schedule is not a navigation policy.
+    Contact solver tolerance (ROBOT_LCP_TOL, default 1e-6): 1e-6..1e-8 agree (37-38 mm tip
+    error); 1e-5 with 50 iterations is under-converged and lands in another branch of the
+    ventricle (5 mm) - the insertion has a bifurcation that small differences can flip.
+RL: ROBOT_RL=1 makes the controller apply cmd_depth / cmd_pressures (rl/ventricle_env.py).
 """
 import json
 import os
@@ -145,6 +149,9 @@ YEOH_EQUIVALENT_ACTUATION = os.environ.get('ROBOT_YEOH_ACTUATION', '1') == '1'
 WALL_STL = os.environ.get('ROBOT_WALL', '')
 INSERT_SPEED = float(os.environ.get('ROBOT_INSERT_SPEED', 0.010))   # [m/s]
 MU = 0.1                                                            # wall friction
+# RL mode (rl/ventricle_env.py): the controller applies cmd_depth / cmd_pressures set by the
+# environment instead of the scripted schedule
+RL_MODE = os.environ.get('ROBOT_RL', '0') == '1'
 EXPORT_AT_STEP = int(os.environ.get('ROBOT_EXPORT_STEP', 1000 if WALL_STL else 600))  # CSV + compare
 if WALL_STL:
     SOFA_CENTERLINE = os.path.join(HERE, 'matlab_refs', f'{CASE}_wall_sofa.csv')
@@ -289,6 +296,8 @@ class PneumaticFollowerController(Sofa.Core.Controller):
         self.step = 0
         self.depth = 0.0                            # inserted soft length [m] (wall mode)
         self.pressures = [np.zeros(sec['nChambers']) for sec in SECTIONS]
+        self.cmd_depth = 0.0                        # RL mode commands
+        self.cmd_pressures = [np.zeros(sec['nChambers']) for sec in SECTIONS]
 
     def set_pressures(self, pressures):
         """Hook for RL / teleoperation: list of per-chamber gauge pressures [Pa]."""
@@ -308,7 +317,11 @@ class PneumaticFollowerController(Sofa.Core.Controller):
 
     def onAnimateBeginEvent(self, _):
         t = self.root.time.value
-        if self.sheath is not None:
+        if RL_MODE:
+            if self.sheath is not None:
+                self.insert(self.cmd_depth)
+            scale, load_scale = None, 1.0
+        elif self.sheath is not None:
             self.insert(INSERT_SPEED * t)
             scale = smooth_step(self.depth / self.rod['s'][-1])
             load_scale = 1.0
@@ -318,7 +331,7 @@ class PneumaticFollowerController(Sofa.Core.Controller):
             # shooting method has no load path; Newton on the beam needs small
             # increments to stay in the basin of the equilibrium).
             load_scale = smooth_step(t / T_RAMP)
-        self.set_pressures([scale * sec['pTarget'] for sec in SECTIONS])
+        self.set_pressures(self.cmd_pressures if RL_MODE else [scale * sec['pTarget'] for sec in SECTIONS])
 
         x = np.asarray(self.dofs.position.value)
         f = np.zeros((len(x), 6))
@@ -344,7 +357,7 @@ class PneumaticFollowerController(Sofa.Core.Controller):
 
     def onAnimateEndEvent(self, _):
         self.step += 1
-        if self.step == EXPORT_AT_STEP:
+        if self.step == EXPORT_AT_STEP and not RL_MODE:
             self.export_and_compare()
 
     def export_and_compare(self):
@@ -430,7 +443,9 @@ def createScene(root):
                   'Sofa.Component.Topology.Container.Constant']:
             root.addObject('RequiredPlugin', name=p.replace('.', '_'), pluginName=p)
         root.addObject('FreeMotionAnimationLoop')
-        root.addObject('BlockGaussSeidelConstraintSolver', maxIterations=200, tolerance=1e-8)
+        root.addObject('BlockGaussSeidelConstraintSolver', name='constraint_solver',
+                       maxIterations=int(os.environ.get('ROBOT_LCP_ITERS', 200)),
+                       tolerance=float(os.environ.get('ROBOT_LCP_TOL', 1e-6)), computeConstraintForces=True)
         root.addObject('CollisionPipeline')
         root.addObject('BruteForceBroadPhase')
         root.addObject('BVHNarrowPhase')
