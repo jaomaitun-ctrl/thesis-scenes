@@ -25,6 +25,8 @@ Observation (35, roughly unit scale)
 Reward (per step)
     + W_DEPTH * inserted mm this step
     - W_TIP   * tip error to the path point at the current depth [mm]
+    - w_shape * shape error: mean distance of the inserted robot nodes to the path point at
+                the same arc length [mm] (constructor arg, default 0 = v3 reward)
     - W_FORCE * total wall contact (sum of normal contact multipliers)
     - W_TIME
     end of episode when fully inserted: + SUCCESS_BONUS * exp(-goal error / GOAL_SCALE_MM)
@@ -64,7 +66,8 @@ class VentricleNavEnv(gym.Env):
 
     def __init__(self, case='design_patient44_right_r3_csf',
                  wall=os.path.join(SCENES, 'walls', 'patient44_right_entryhole.stl'),
-                 sim_steps_per_action=10, max_steps=300):
+                 sim_steps_per_action=10, max_steps=300, w_shape=0.0):
+        self.w_shape = float(w_shape)
         os.environ.update(ROBOT_CASE=case, ROBOT_WALL=wall, ROBOT_RL='1')
         import Sofa.Core
         import Sofa.Simulation
@@ -190,7 +193,8 @@ class VentricleNavEnv(gym.Env):
 
         st = self._state()
         ddepth_mm = (self.ctrl.cmd_depth - prev_depth) * 1e3
-        r = W_DEPTH * ddepth_mm - W_TIP * st['tip_err'] - W_FORCE * st['force'] - W_TIME
+        r = (W_DEPTH * ddepth_mm - W_TIP * st['tip_err'] - self.w_shape * st['shape_err']
+             - W_FORCE * st['force'] - W_TIME)
         terminated = False
         done = st['depth_mm'] >= st['L_mm'] - 1e-6
         success = done and st['goal_err'] <= GOAL_TOL_MM

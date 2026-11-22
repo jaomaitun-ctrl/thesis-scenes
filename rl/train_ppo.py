@@ -18,13 +18,13 @@ sys.path.insert(0, HERE)
 INFO_KEYS = ('success', 'depth_mm', 'tip_err_mm', 'goal_err_mm', 'shape_err_mm', 'force', 'outside')
 
 
-def make_env(rank, run_dir, max_steps):
+def make_env(rank, run_dir, max_steps, w_shape=0.0):
     def _init():
         import torch
         torch.set_num_threads(1)
         from stable_baselines3.common.monitor import Monitor
         from ventricle_env import VentricleNavEnv
-        env = VentricleNavEnv(max_steps=max_steps)
+        env = VentricleNavEnv(max_steps=max_steps, w_shape=w_shape)
         return Monitor(env, os.path.join(run_dir, f'monitor_{rank}'), info_keywords=INFO_KEYS)
     return _init
 
@@ -39,6 +39,8 @@ def main():
     ap.add_argument('--ckpt', type=int, default=10_000)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--resume', default='')
+    ap.add_argument('--w-shape', type=float, default=0.0,
+                    help='reward weight per step on the shape error [1/mm] (0 = v3 reward)')
     a = ap.parse_args()
 
     import torch
@@ -50,7 +52,7 @@ def main():
     torch.set_num_threads(1)
     run_dir = os.path.join(HERE, 'runs', a.name)
     os.makedirs(run_dir, exist_ok=True)
-    fns = [make_env(i, run_dir, a.max_episode_steps) for i in range(a.envs)]
+    fns = [make_env(i, run_dir, a.max_episode_steps, a.w_shape) for i in range(a.envs)]
     venv = SubprocVecEnv(fns, start_method='spawn') if a.envs > 1 else DummyVecEnv(fns)
     norm_path = os.path.join(run_dir, 'vecnormalize.pkl')
     if a.resume and os.path.exists(norm_path):
