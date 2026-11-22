@@ -65,9 +65,15 @@ Run (GUI)  -- from the SOFA checkout that has the pixi env:
         ~/sofa/thesis-scenes/cosserat_robot_01_from_matlab.py
 Run (headless; writes matlab_refs/<case>_sofa.csv and prints the comparison):
     add  -g batch -n 610  to the command above.
+Ventricle wall + insertion (design_* cases; wall from tools/ventricle_wall.py):
+    ROBOT_WALL=walls/<patient>_entryhole.stl ROBOT_CASE=design_<patient>_r3_csf ... -n 1005
+    patient44_right, r = 3 mm, 10 mm/s, final bends ramped with depth: 80 mm inserted in
+    41 s wall time; stays in the lumen, no penetration of the wall; settles 14.6 mm (mean)
+    from the planned path - the scripted schedule is not a navigation policy.
 """
 import json
 import os
+import sys
 import numpy as np
 import Sofa
 
@@ -129,7 +135,19 @@ DT = 0.01                                    # [s] time step
 SOLVER = os.environ.get('ROBOT_SOLVER', 'dynamic')
 # Map chamber moments through the Yeoh law onto the linear beam (see actuation_moment_body)
 YEOH_EQUIVALENT_ACTUATION = os.environ.get('ROBOT_YEOH_ACTUATION', '1') == '1'
-EXPORT_AT_STEP = int(os.environ.get('ROBOT_EXPORT_STEP', 600))   # write CSV + compare
+
+# Ventricle wall + insertion (design_* cases only): ROBOT_WALL=<wall stl, mm, with entry
+# hole from tools/ventricle_wall.py>.  The robot is pushed out of a rigid sheath that
+# ends at the entry point F (soft_base_m): nodes still inside the sheath are held on the
+# insertion axis, the rest are free and touch the wall through sphere contacts
+# (Lagrangian, friction MU).  Pressures follow a scripted schedule (final bends ramped
+# with insertion depth) - a smoke test of the environment, not a navigation policy.
+WALL_STL = os.environ.get('ROBOT_WALL', '')
+INSERT_SPEED = float(os.environ.get('ROBOT_INSERT_SPEED', 0.010))   # [m/s]
+MU = 0.1                                                            # wall friction
+EXPORT_AT_STEP = int(os.environ.get('ROBOT_EXPORT_STEP', 1000 if WALL_STL else 600))  # CSV + compare
+if WALL_STL:
+    SOFA_CENTERLINE = os.path.join(HERE, 'matlab_refs', f'{CASE}_wall_sofa.csv')
 
 if CASES[CASE][2] == 'kocher':
     BASE_POS = np.array(POSE['base_position_m'])          # top of the rigid insertion
@@ -239,6 +257,11 @@ def build_rod():
         node_ranges.append((first, len(s) - 1))       # (base node, tip node)
     s = np.array(s)
     pos = [list(soft_base + si * tangent) + list(BASE_QUAT) for si in s]
+    F = soft_base
+    if WALL_STL:          # start fully retracted in the sheath: tip at the entry point F
+        F = np.array(DESIGN[CASE]['soft_base_m'])
+        pos = [list(F + (si - s[-1]) * tangent) + list(BASE_QUAT) for si in s]
+    section_of_node = [section_of_edge[0]] + section_of_edge
     edges = [[i, i + 1] for i in range(len(s) - 1)]
     # lumped weight rho*A*g per node (half of each adjacent element)
     weight = np.zeros((len(s), 3))
@@ -247,7 +270,8 @@ def build_rod():
         f = sec['rho'] * sec['A'] * (s[b] - s[a]) * GRAVITY
         weight[a] += 0.5 * f
         weight[b] += 0.5 * f
-    return dict(s=s, pos=pos, edges=edges, section_of_edge=section_of_edge,
+    return dict(s=s, pos=pos, edges=edges, section_of_edge=section_of_edge, F=F, d=tangent,
+                section_of_node=section_of_node,
                 node_ranges=node_ranges, weight=weight, soft_base=soft_base)
 
 
@@ -261,22 +285,41 @@ class PneumaticFollowerController(Sofa.Core.Controller):
         self.dofs = kwargs['dofs']
         self.loads = kwargs['loads']
         self.rod = kwargs['rod']
+        self.sheath = kwargs.get('sheath')          # FixedProjectiveConstraint (wall mode)
         self.step = 0
+        self.depth = 0.0                            # inserted soft length [m] (wall mode)
         self.pressures = [np.zeros(sec['nChambers']) for sec in SECTIONS]
 
     def set_pressures(self, pressures):
         """Hook for RL / teleoperation: list of per-chamber gauge pressures [Pa]."""
         self.pressures = [np.asarray(p, float) for p in pressures]
 
+    def insert(self, depth):
+        """Hold the not-yet-inserted nodes on the axis behind F (inside the sheath)."""
+        rod = self.rod
+        L = rod['s'][-1]
+        self.depth = min(max(depth, 0.0), L)
+        behind = rod['s'] - (L - self.depth)            # < 0: still in the sheath
+        idx = np.where(behind <= 1e-9)[0]
+        with self.dofs.position.writeableArray() as x:
+            x[idx, :3] = rod['F'] + np.outer(behind[idx], rod['d'])
+            x[idx, 3:] = BASE_QUAT
+        self.sheath.indices.value = idx.tolist()
+
     def onAnimateBeginEvent(self, _):
         t = self.root.time.value
-        scale = smooth_step(t / T_RAMP)
+        if self.sheath is not None:
+            self.insert(INSERT_SPEED * t)
+            scale = smooth_step(self.depth / self.rod['s'][-1])
+            load_scale = 1.0
+        else:
+            scale = smooth_step(t / T_RAMP)
+            # External loads are ramped as well (MATLAB applies them at once, but the
+            # shooting method has no load path; Newton on the beam needs small
+            # increments to stay in the basin of the equilibrium).
+            load_scale = smooth_step(t / T_RAMP)
         self.set_pressures([scale * sec['pTarget'] for sec in SECTIONS])
 
-        # External loads are ramped as well (MATLAB applies them at once, but the
-        # shooting method has no load path; Newton on the beam needs small
-        # increments to stay in the basin of the equilibrium).
-        load_scale = smooth_step(t / T_RAMP)
         x = np.asarray(self.dofs.position.value)
         f = np.zeros((len(x), 6))
         f[:, :3] = load_scale * self.rod['weight']
@@ -312,6 +355,9 @@ class PneumaticFollowerController(Sofa.Core.Controller):
         for sec, p in zip(SECTIONS, self.pressures):
             print(f'[cosserat_robot] chamber pressures [kPa] = '
                   f'{np.array2string(p / 1e3, precision=2)}')
+        if self.sheath is not None:
+            self.report_wall(x)
+            return
         if not os.path.exists(MATLAB_CENTERLINE):
             return
         ref = np.loadtxt(MATLAB_CENTERLINE, delimiter=',')
@@ -324,6 +370,38 @@ class PneumaticFollowerController(Sofa.Core.Controller):
         print(f'[cosserat_robot] tip error = {1e3 * err[-1]:.2f} mm, '
               f'centreline RMS = {1e3 * np.sqrt(np.mean(err ** 2)):.2f} mm, '
               f'max = {1e3 * err.max():.2f} mm  (soft length {1e3 * self.rod["s"][-1]:.0f} mm)')
+
+    def report_wall(self, x):
+        """Wall mode: penetration into the FULL wall and deviation from the patient path."""
+        sys.path.insert(0, os.path.join(HERE, 'tools'))
+        from ventricle_wall import read_stl, distance_to_mesh, inside
+        d = DESIGN[CASE]
+        full_wall = os.path.join(os.path.dirname(os.path.dirname(d['ref_path_file'])), 'ventricles',
+                                 d['patient_path'] + '.stl')
+        free = self.rod['s'] > self.rod['s'][-1] - self.depth + 1e-9
+        r = np.array([SECTIONS[self.rod['section_of_node'][i]]['radius'] for i in range(len(x))])
+        for label, fn in [('wall with entry hole', WALL_STL), ('full wall', full_wall)]:
+            if not os.path.exists(fn):
+                continue
+            dist = distance_to_mesh(1e3 * x[free], read_stl(fn)) / 1e3
+            pen = (r[free] - dist) * 1e3
+            s_out = (self.rod['s'][free] - (self.rod['s'][-1] - self.depth)) * 1e3   # mm past F
+            where = (f' at {s_out[pen > 0.1].min():.0f}-{s_out[pen > 0.1].max():.0f} mm past F'
+                     if np.any(pen > 0.1) else '')
+            n_out = np.sum(~inside(1e3 * x[free], read_stl(fn))) if label == 'full wall' else 0
+            print(f'[cosserat_robot] {label}: min centreline-wall distance {1e3 * dist.min():.2f} mm, '
+                  f'max penetration (r - dist) {pen.max():+.2f} mm, nodes penetrating > 0.1 mm: '
+                  f'{np.sum(pen > 0.1)} / {free.sum()}{where}'
+                  + (f'; centreline nodes outside the lumen: {n_out}' if label == 'full wall' else ''))
+        path = np.loadtxt(d['ref_path_file'], delimiter=',') / 1e3 if os.path.exists(d['ref_path_file']) else None
+        if path is not None:
+            sp = np.r_[0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
+            s_free = self.rod['s'][free] - (self.rod['s'][-1] - self.depth)
+            ok = s_free <= sp[-1]
+            p_i = np.column_stack([np.interp(s_free[ok], sp, path[:, k]) for k in range(3)])
+            e = np.linalg.norm(x[free][ok] - p_i, axis=1) * 1e3
+            print(f'[cosserat_robot] inserted {1e3 * self.depth:.1f} mm; deviation from the patient path: '
+                  f'mean {e.mean():.2f} mm, tip {e[-1]:.2f} mm')
 
 
 # --------------------------------------------------------------------- scene
@@ -344,7 +422,31 @@ def createScene(root):
     root.dt = DT
     root.gravity = [0, 0, 0]          # weight is applied explicitly (exact rho*A*g per node)
     root.addObject('VisualStyle', displayFlags='showVisualModels showBehaviorModels')
-    root.addObject('DefaultAnimationLoop')
+    if WALL_STL:
+        for p in ['Sofa.Component.AnimationLoop', 'Sofa.Component.Collision.Detection.Algorithm',
+                  'Sofa.Component.Collision.Detection.Intersection', 'Sofa.Component.Collision.Geometry',
+                  'Sofa.Component.Collision.Response.Contact', 'Sofa.Component.Constraint.Lagrangian.Correction',
+                  'Sofa.Component.Constraint.Lagrangian.Solver', 'Sofa.Component.IO.Mesh',
+                  'Sofa.Component.Topology.Container.Constant']:
+            root.addObject('RequiredPlugin', name=p.replace('.', '_'), pluginName=p)
+        root.addObject('FreeMotionAnimationLoop')
+        root.addObject('BlockGaussSeidelConstraintSolver', maxIterations=200, tolerance=1e-8)
+        root.addObject('CollisionPipeline')
+        root.addObject('BruteForceBroadPhase')
+        root.addObject('BVHNarrowPhase')
+        root.addObject('MinProximityIntersection', alarmDistance=1.0e-3, contactDistance=0.1e-3)
+        root.addObject('CollisionResponse', response='FrictionContactConstraint',
+                       responseParams=f'mu={MU}')
+        wall = root.addChild('VentricleWall')
+        wall.addObject('MeshSTLLoader', name='loader', filename=WALL_STL, scale3d=[1e-3] * 3)
+        wall.addObject('MeshTopology', src='@loader')
+        wall.addObject('MechanicalObject', template='Vec3d', position='@loader.position')
+        for cm in ('TriangleCollisionModel', 'LineCollisionModel', 'PointCollisionModel'):
+            wall.addObject(cm, moving=False, simulated=False)
+        wall.addChild('Visual').addObject('OglModel', src='@../loader',
+                                          color=[0.12, 0.59, 0.99, 0.25])
+    else:
+        root.addObject('DefaultAnimationLoop')
     root.addObject('OglSceneFrame', style='Arrows', alignment='TopRight')
 
     rod = build_rod()
@@ -364,7 +466,10 @@ def createScene(root):
                     position=[p[:3] for p in rod['pos']], edges=rod['edges'])
     dofs = robot.addObject('MechanicalObject', name='frames', template='Rigid3d',
                            position=rod['pos'], showObject=True, showObjectScale=0.006)
-    robot.addObject('FixedProjectiveConstraint', indices=[0])   # end of rigid insertion
+    if WALL_STL:
+        robot.addObject('GenericConstraintCorrection')
+    sheath = robot.addObject('FixedProjectiveConstraint', name='sheath',   # rigid insertion
+                             indices=list(range(len(rod['pos']))) if WALL_STL else [0])
     # Inertia only matters for the transient (weight is applied explicitly).
     # Per-frame mass of a 5 mm slice; inertia of a solid cylinder slice.
     sec0 = SECTIONS[0]
@@ -391,17 +496,29 @@ def createScene(root):
                               color=sec['color'], edges=edges)
         visu.addObject('IdentityMapping', input=dofs.getLinkPath(), output=tube.getLinkPath())
 
+    if WALL_STL:   # contact spheres of the robot radius on every frame
+        col = robot.addChild('Collision')
+        col.addObject('MechanicalObject', template='Vec3d')
+        # one radius for all spheres (listRadius is not picked up here and falls back to the
+        # default radius 1 = 1 m); section 1 is the thicker one, so this is conservative
+        col.addObject('SphereCollisionModel', radius=max(sec['radius'] for sec in SECTIONS))
+        col.addObject('IdentityMapping')
+        rigid_pts = [list(rod['F'] - ROBOT['Lrigid'] * rod['d']), list(rod['F'])]
+    else:
+        rigid_pts = [list(BASE_POS), list(rod['soft_base'])]
+
     rigid = root.addChild('RigidInsertion')
     rigid.addObject('CylinderVisualModel', radius=ROBOT['rigidRadius'],
                     color=[0.25, 0.28, 0.32, 1.0], edges=[[0, 1]],
-                    position=[list(BASE_POS), list(rod['soft_base'])])
+                    position=rigid_pts)
 
-    if os.path.exists(MATLAB_CENTERLINE):          # MATLAB final equilibrium, for overlay
+    if os.path.exists(MATLAB_CENTERLINE) and not WALL_STL:   # MATLAB equilibrium overlay
         ref = root.addChild('MatlabReference')
         ref.addObject('MechanicalObject', template='Vec3d',
                       position=np.loadtxt(MATLAB_CENTERLINE, delimiter=',').tolist(),
                       showObject=True, showObjectScale=4, showColor=[1, 0, 1, 1])
 
     robot.addObject(PneumaticFollowerController(name='pneumatics', root=root, dofs=dofs,
-                                                loads=loads, rod=rod))
+                                                loads=loads, rod=rod,
+                                                sheath=sheath if WALL_STL else None))
     return root
