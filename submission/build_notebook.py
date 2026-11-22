@@ -22,7 +22,8 @@ Proximal Policy Optimization (PPO).
 4. Simulator and training system
 5. Training (re-runnable with SOFA; logs included)
 6. Results: learning curves, evaluation, trajectories, reward-shaping ablation (v1 vs v2)
-7. Discussion, limitations, next steps
+7. Interactive demo (Gradio)
+8. Discussion, limitations, next steps
 
 All figures and tables below are computed from the files in `results/` (training logs and
 recorded SOFA rollouts), so the notebook runs without SOFA. Cells that call SOFA are
@@ -298,7 +299,28 @@ plt.show()
 """)
 
 md(r"""
-## 7. Discussion, limitations, next steps
+## 7. Interactive demo (Gradio)
+
+`app.py` is a Gradio app with three tabs:
+
+* **Replay** — 3D view (plotly) of the ventricle, Kocher point, sheath, planned path and the recorded SOFA
+  insertions of v2, v1 and the nominal schedule, with a step slider and Play button, plus final metrics.
+* **Results** — the training curves and evaluation table of this notebook.
+* **Live SOFA** — runs a new SOFA simulation with a chosen controller, deterministic or sampled actions and a
+  seed, then replays it (shown only where the SOFA build is available, e.g. the lab server).
+
+Run it with `pip install -r requirements-app.txt && python app.py` (add `--share` for a temporary public link),
+or set `LAUNCH_APP = True` below to open it inside the notebook.
+""")
+code(r"""
+LAUNCH_APP = False
+if LAUNCH_APP:
+    from app import demo
+    demo.launch(inline=True, height=900)
+""")
+
+md(r"""
+## 8. Discussion, limitations, next steps
 
 **What worked.** Residual RL on top of a physically fitted nominal schedule makes the problem
 learnable in ~10⁵ simulator steps: the policy only has to learn corrections, and the nominal
@@ -310,6 +332,9 @@ strays, a proxy for wall loading) and the task metric at the same time.
 solver changes which ventricle branch the robot enters. (2) Long simulation-in-the-loop training
 needs resource management — worker respawning removed the out-of-memory failure without losing
 steps. (3) One environment per process is required because the SOFA scene is configured at import.
+(4) Results are bit-for-bit repeatable on one platform, but not across platforms: the deterministic v2 rollout
+ends 0.67 mm from the goal on Linux/x86-64 (training server) and 0.74 mm on macOS/arm64, from floating-point
+differences in the contact solver.
 
 **Limitations.** One anatomy (patient 44, right) for training and testing; rigid wall (the
 planned poroviscoelastic wall with contact history is not yet in); no sensing noise, no domain

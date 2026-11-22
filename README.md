@@ -10,6 +10,7 @@ A PPO policy controls insertion and bending in a SOFA physics simulation of a pa
 **Course submission:** [`submission/`](submission/)
 - [notebook](submission/ventricle_rl_ppo.ipynb)
 - [2-page summary (PDF)](submission/summary.pdf)
+- [Gradio demo](submission/app.py): 3D replay, results, live SOFA runs
 - [environment and reproduction](submission/ENVIRONMENT.md)
 - [video script](submission/VIDEO_SCRIPT.md)
 
@@ -35,6 +36,14 @@ Reproduce the figures and tables from the saved logs; this does not need SOFA:
 cd submission
 pip install -r requirements-analysis.txt
 jupyter notebook ventricle_rl_ppo.ipynb
+```
+
+Interactive demo (3D replay of the insertions; a Live SOFA tab appears where SOFA is installed):
+
+```bash
+cd submission
+pip install -r requirements-app.txt
+python app.py            # http://127.0.0.1:7860
 ```
 
 Evaluating or retraining the policies needs a SOFA v26.06 build (pixi) and the pinned RL

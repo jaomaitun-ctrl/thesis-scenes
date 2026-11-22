@@ -1,0 +1,5 @@
+# Gradio demo (app.py). Replay and Results tabs need only these; the Live SOFA tab also needs the
+# SOFA build and requirements-rl.txt (it calls rl/rollout.py through rl/run.sh or rl/run_server.sh).
+gradio>=5.0
+plotly>=5.20
+numpy>=1.26

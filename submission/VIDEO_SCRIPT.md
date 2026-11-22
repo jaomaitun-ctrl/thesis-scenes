@@ -10,8 +10,8 @@ Times are targets; the total is 20:00. **[Show]** says what is on screen, and th
 | 3 | 4:00–7:30 | RL formulation |
 | 4 | 7:30–10:00 | Simulator and engineering |
 | 5 | 10:00–11:30 | Notebook walkthrough: setup and data |
-| 6 | 11:30–15:30 | Results |
-| 7 | 15:30–18:00 | Live demo |
+| 6 | 11:30–14:30 | Results |
+| 7 | 14:30–18:00 | Gradio demo and live SOFA |
 | 8 | 18:00–19:30 | Limitations and next steps |
 | 9 | 19:30–20:00 | Reproducibility and close |
 
@@ -62,7 +62,7 @@ Times are targets; the total is 20:00. **[Show]** says what is on screen, and th
 **[Show]** scroll the notebook from the top: environment cell, versions, `RUN_SOFA = False`, data cell.
 - Every figure regenerates from the logs in `results/`; training cells are guarded by `RUN_SOFA`.
 
-## 6. Results (11:30–15:30)
+## 6. Results (11:30–14:30)
 **[Show]** notebook 6.1 (learning curves), 6.2 (table), 6.3 (trajectories), 6.4 (PPO diagnostics).
 - Both policies escape the wrong branch within about 40k steps.
 - v1 keeps improving the tip, but its body stays about 4.7 mm off the path for the whole run.
@@ -72,12 +72,16 @@ Times are targets; the total is 20:00. **[Show]** says what is on screen, and th
 - Diagnostics: exploration (action std) decreases smoothly, and value explained variance is about 0.97, so
   training is healthy.
 
-## 7. Live demo (15:30–18:00)
-**[Show]** in order:
-1. Web viewer (`http://10.33.99.110:8080`): press Play and toggle runs 1/2/3; read out tip-to-goal.
-2. runSofa with `rl/policy_scene.py` (on the Mac, or noVNC `http://10.33.99.110:6080`): press ▶;
-   the v2 policy drives SOFA live; point at the log lines (0.67 mm at step 80).
-3. Optional: the Unity scene `Patient44_RL.unity`, the same motion in the project's visualisation.
+## 7. Gradio demo and live SOFA (14:30–18:00)
+**[Show]** the Gradio app (`python app.py`, or on the server `http://10.33.99.110:7860`):
+1. **Replay** tab: tick v2 and v1, press ▶ Play, and drag the step slider to show the robot leaving the
+   sheath at F and the v1 body bowing off the path; read the table (0.67 vs 1.21 mm; 2.4 vs 4.5 mm body).
+   Tick "Nominal schedule" to show the wrong-branch failure.
+2. **Results** tab: the same curves and table as the notebook.
+3. **Live SOFA** tab: run v2 deterministic (0.67 mm on the server), then sampled actions with two seeds,
+   to show the policy is robust and not just replaying one trajectory. Mention that each run is a new
+   physics simulation, taking 10–60 s.
+4. Optional: runSofa with `rl/policy_scene.py` (SOFA's own GUI; noVNC `http://10.33.99.110:6080`).
 
 ## 8. Limitations and next steps (18:00–19:30)
 **[Show]** `summary.pdf` section 5.
@@ -92,6 +96,6 @@ Times are targets; the total is 20:00. **[Show]** says what is on screen, and th
   All versions are pinned. Thank the audience.
 
 ---
-**Before recording:** start the viewers (`rl/server/sofa_gui.sh start` on the server for noVNC; the web
+**Before recording:** start the Gradio app (tmux session `gradio` on the server), the viewers (`rl/server/sofa_gui.sh start` on the server for noVNC; the web
 viewer runs in tmux session `web`), open the notebook already executed, and close unrelated windows.
 Do not show the VNC password on screen.

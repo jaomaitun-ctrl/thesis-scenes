@@ -127,7 +127,11 @@ story += [
       'with a body term is the most effective design change: it <b>halves the body-to-path distance</b> '
       '(4.6 → 2.5 mm) <b>and improves the task metric</b> (goal error 1.2 → 0.7 mm deterministic; 90 % → 97 % '
       'success), because a body on the path keeps the tip in a reachable configuration. (3) The learned '
-      'policy runs live in SOFA\'s own GUI and reproduces the training rollout exactly (0.67 mm).'),
+      'policy runs live in SOFA\'s own GUI and reproduces the training rollout exactly on the same platform '
+      '(0.67 mm on Linux; 0.74 mm on macOS/arm64 from floating-point differences).'),
+    P('<b>Interactive demo.</b> A Gradio app (<font face="Courier">submission/app.py</font>) shows a 3D replay of the '
+      'recorded insertions with a step slider, the results, and, where SOFA is installed, a <i>Live SOFA</i> tab that runs '
+      'a new simulation with a chosen policy, action mode and seed.'),
 
     P('5. Limitations and next steps', h2),
     B('Single anatomy, rigid wall, no sensor noise or domain randomisation, small test set (30 episodes per policy).'),
@@ -136,7 +140,7 @@ story += [
       'compare policies with and without contact-history information; non-learned baselines.'),
 
     P('6. Reproducibility', h2),
-    P('Repository <font face="Courier">thesis-scenes</font> (branch <font face="Courier">rl-shape-reward</font>): '
+    P('Public repository <font face="Courier">github.com/jaomaitun-ctrl/thesis-scenes</font>: '
       'environment <font face="Courier">rl/ventricle_env.py</font>, training <font face="Courier">rl/train_ppo.py</font>, '
       '<font face="Courier">rl/train_supervised.sh</font>; notebook <font face="Courier">submission/ventricle_rl_ppo.ipynb</font> '
       'regenerates every figure and table from the included logs and rollouts without SOFA. '

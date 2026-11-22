@@ -7,6 +7,7 @@ Three levels of reproduction, from cheapest to full:
 | **A** | Every table and figure in the notebook and summary, from the saved training logs and rollouts in `results/` | Python ≥ 3.10 + `requirements-analysis.txt` |
 | **B** | The evaluation rollouts (`results/rollouts/*.npz`) from the saved models | SOFA build (below) + `requirements-rl.txt` |
 | **C** | Training both policies from scratch | Same as B; ~1 h per run on 6 CPU cores |
+| **Demo** | Gradio app `app.py` (Replay, Results; Live SOFA with the build) | `requirements-app.txt` (+ B for Live) |
 
 ## Level A (analysis only)
 
@@ -76,3 +77,9 @@ runSofa -l SofaPython3 -g imgui rl/policy_scene.py
 
 Seeds: PPO `seed=0`; evaluation `--seed 7`. SOFA itself is deterministic for a given action
 sequence. Sampled-action results vary with the seed; the deterministic policy rollout does not.
+Results repeat exactly on one platform, not across platforms: the deterministic v2 rollout ends
+0.67 mm from the goal on Linux x86-64 (where all reported numbers were produced) and 0.74 mm on
+macOS arm64, because the contact solver's floating-point results differ slightly.
+
+Gradio demo: `pip install -r requirements-app.txt && python app.py` (http://127.0.0.1:7860; set
+`GRADIO_SERVER_NAME=0.0.0.0` to serve on a network, or pass `--share`).
