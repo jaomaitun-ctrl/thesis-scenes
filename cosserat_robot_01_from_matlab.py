@@ -51,6 +51,10 @@ actuation on):
                         bent 77 deg / 88 deg: tip error 0.07 mm, RMS 0.05 mm.  Needs
                         the Yeoh-equivalent actuation: at 32 % fibre strain the linear
                         beam alone over-bends section 1 by ~9 deg (tip error 7.6 mm).
+    design_patient44_right_r3_{nogravity,csf}
+                        same, radius 3 / 2.75 mm (OD 6 mm, tools/size_radius.py): tip
+                        error 0.07 / 0.09 mm.  Same shape at half the pressure (max
+                        237 vs 514 kPa, placeholder C10) and half the strain (16 %).
 References: matlab/run_cases.m (solver generated from cosserat_yeoh_quasistatic.m
 by tools/make_matlab_case.py; Kocher pose from tools/kocher_pose.py).
 
@@ -136,6 +140,10 @@ elif CASES[CASE][2] == 'design':
     BASE_QUAT = np.array(_d['base_quat_xyzw'])
     for _sec, _s in zip(SECTIONS, _d['sections']):
         _sec.update(L=_s['L_m'], bend=_s['bend_rad'], plane=_s['plane_rad'])
+        if 'radius_m' in _s:                                  # resized cross-section
+            _sec.update(radius=_s['radius_m'], chamberOffset=_s['chamberOffset_m'],
+                        chamberRadius=_s['chamberRadius_m'])
+            ROBOT['rigidRadius'] = 0.75 * _d['sections'][0]['radius_m']
     # short, strongly bent sections: 2 mm elements (>= 10 per section)
     ELEMENT_LENGTH = min(0.002, min(s['L_m'] for s in _d['sections']) / 10)
 else:

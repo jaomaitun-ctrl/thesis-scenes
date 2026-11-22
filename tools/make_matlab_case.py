@@ -5,6 +5,8 @@ The solver is copied unchanged (sections 1-4 + all local functions); only the
 plots/exports are dropped and these lines become overridable by the caller:
     robot.basePosition    <- CASE_P   (if defined)
     robot.baseQuaternion  <- CASE_Q   (if defined, [w x y z])
+    sec(1:2)              <- makeSection(..., CASE_SEC(j,:) = [r offset chamberR], ...)
+                                      (if defined, [m]; same material)
     sec(1:2).L            <- CASE_L   (if defined, [m])
     pTarget{1:2}          <- pressureFromBend(sec(j), CASE_BEND(j,1), CASE_BEND(j,2))
                                       (if defined, radians)
@@ -31,6 +33,11 @@ for line in src[:plots]:
         line += "\nif exist('CASE_Q','var'), robot.baseQuaternion = CASE_Q(:); end"
     elif line.startswith('sec(2) = makeSection('):
         # section lengths only enter through sec(j).L (the Yeoh M(k) table is per area)
+        # CASE_SEC = [radius offset chamberRadius] per row [m]: rebuild the section
+        # (same material, density, chamber count) with the new cross-section
+        line += ("\nif exist('CASE_SEC','var'), for jj = 1:2, sec(jj) = makeSection(sec(jj).L, "
+                 "CASE_SEC(jj,1), sec(jj).yeoh, sec(jj).rho, CASE_SEC(jj,2), CASE_SEC(jj,3), "
+                 "size(sec(jj).d,2)); end, end")
         line += "\nif exist('CASE_L','var'), sec(1).L = CASE_L(1); sec(2).L = CASE_L(2); end"
     elif line.startswith('pTarget{2} = pressureFromBend('):
         # CASE_BEND = [bend1 plane1; bend2 plane2] in radians

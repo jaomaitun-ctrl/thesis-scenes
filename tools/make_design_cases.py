@@ -10,7 +10,9 @@ Frame mapping (fit -> robot):
   => x_b = d, y_b = cross(a,d), z_b = a, and plane_j = phi_j, bend_j = kappa_j * L_j.
   Section 2's plane is relative to section 1's end frame in both (bend without twist).
 
-Run:  python tools/make_design_cases.py <patients_dataset> <path name, e.g. patient44_right>
+Run:  python tools/make_design_cases.py <patients_dataset> <path name, e.g. patient44_right> [r1_mm]
+      With r1_mm the cross-section is scaled self-similarly from the MATLAB design
+      (section 2 keeps its 5.5/6 ratio) and the case names get an _r<r1> suffix.
 """
 import json
 import os
@@ -24,9 +26,11 @@ from fit_robot_design import kocher_axes, robot_points  # noqa: E402
 from kocher_pose import rotm_to_quat_wxyz  # noqa: E402
 
 L_RIGID_MM = 80.0
+# MATLAB cross-sections [radius, chamber offset, chamber radius] in m
+MATLAB_SEC = [(6.0e-3, 3.5e-3, 2.0e-3), (5.5e-3, 3.2e-3, 1.8e-3)]
 
 
-def main(ds_dir, name):
+def main(ds_dir, name, r1_mm=None):
     root = os.path.dirname(HERE)
     fit = json.load(open(os.path.join(root, 'poses', 'robot_design_fit.json')))
     pose3 = json.load(open(os.path.join(root, 'poses', 'kocher_patient3.json')))
@@ -61,9 +65,15 @@ def main(ds_dir, name):
         ],
         'pcc_fit_centerline_m': (pcc / 1000).tolist(),
     }
+    tag = ''
+    if r1_mm is not None:
+        f = r1_mm * 1e-3 / MATLAB_SEC[0][0]
+        for sec, (rad, off, rc) in zip(base['sections'], MATLAB_SEC):
+            sec.update(radius_m=rad * f, chamberOffset_m=off * f, chamberRadius_m=rc * f)
+        tag = f'_r{r1_mm:g}'
     for load, g in [('nogravity', [0.0, 0.0, 0.0]), ('csf', pose3['gravity']['supine_head0_csf'])]:
         out = dict(base, gravity=g)
-        fn = os.path.join(root, 'poses', f'design_{name}_{load}.json')
+        fn = os.path.join(root, 'poses', f'design_{name}{tag}_{load}.json')
         json.dump(out, open(fn, 'w'), indent=1)
         print('wrote', fn)
     print('sections:', [(round(x['L_m'] * 1e3), round(np.degrees(x['bend_rad'])), round(np.degrees(x['plane_rad'])))
@@ -71,4 +81,4 @@ def main(ds_dir, name):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else None)

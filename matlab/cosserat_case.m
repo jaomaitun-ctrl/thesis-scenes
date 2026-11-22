@@ -54,6 +54,7 @@ if exist('CASE_Q','var'), robot.baseQuaternion = CASE_Q(:); end
 % your own material tests (uniaxial tension fit).
 sec(1) = makeSection(0.120, 6.0e-3, [58.3e3, 5e3, 0.5e3], 1050, 3.5e-3, 2.0e-3, 3);
 sec(2) = makeSection(0.100, 5.5e-3, [41.7e3, 4e3, 0.4e3], 1050, 3.2e-3, 1.8e-3, 3);
+if exist('CASE_SEC','var'), for jj = 1:2, sec(jj) = makeSection(sec(jj).L, CASE_SEC(jj,1), sec(jj).yeoh, sec(jj).rho, CASE_SEC(jj,2), CASE_SEC(jj,3), size(sec(jj).d,2)); end, end
 if exist('CASE_L','var'), sec(1).L = CASE_L(1); sec(2).L = CASE_L(2); end
 
 %% 2) Final pressure command ---------------------------------------------
