@@ -1,0 +1,5 @@
+# Level A: run the notebook's analysis from the saved logs and rollouts (no SOFA needed).
+# python >= 3.10
+numpy>=1.26
+matplotlib>=3.8
+jupyter>=1.0

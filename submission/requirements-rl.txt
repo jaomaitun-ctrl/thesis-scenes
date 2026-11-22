@@ -1,0 +1,9 @@
+# Levels B/C: evaluate or retrain the policies. These go into thesis-scenes/.pydeps and are
+# imported by SOFA's Python 3.12 (python-sofa / the pixi env python), not a separate venv:
+#   pip install --target .pydeps --python-version 3.12 --only-binary=:all: \
+#       --extra-index-url https://download.pytorch.org/whl/cpu -r submission/requirements-rl.txt
+#   rm -rf .pydeps/numpy .pydeps/numpy-* .pydeps/numpy.libs   # keep the SOFA env's numpy 2.5.0
+# Exact versions used for the reported runs (Ubuntu 24.04 server, CPU):
+torch==2.7.1
+stable-baselines3==2.6.0
+gymnasium==1.1.1
