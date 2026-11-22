@@ -12,7 +12,6 @@ A PPO policy controls insertion and bending in a SOFA physics simulation of a pa
 - [2-page summary (PDF)](submission/summary.pdf)
 - [Gradio demo](submission/app.py): 3D replay, results, live SOFA runs
 - [environment and reproduction](submission/ENVIRONMENT.md)
-- [video script](submission/VIDEO_SCRIPT.md)
 
 ## Results (patient 44, right ventricle)
 

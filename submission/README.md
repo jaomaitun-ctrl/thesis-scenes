@@ -5,7 +5,6 @@
 | Jupyter notebook with code and explanations | `ventricle_rl_ppo.ipynb` (executed; rebuild with `build_notebook.py`) |
 | Written summary, 1–2 pages | `summary.pdf` (2 pages; rebuild with `build_summary.py`) |
 | Gradio demo | `app.py` (Replay, Results, Live SOFA); `requirements-app.txt` |
-| Video, 20 minutes | `VIDEO_SCRIPT.md` (timed script and shot list; recording and upload are still to do) |
 | Reproducible environment and dependencies | `ENVIRONMENT.md`, `requirements-analysis.txt`, `requirements-rl.txt` |
 
 `results/` holds the training logs (SB3 Monitor and progress CSVs), the trained models
