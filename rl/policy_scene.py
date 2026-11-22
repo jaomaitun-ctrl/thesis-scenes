@@ -73,6 +73,26 @@ class PolicyDriver(Sofa.Core.Controller):
         self.k = 0
 
 
+def keep_libraries_on_reload():
+    """runSofa's reload calls SofaRuntime.unloadModules(), which drops every module imported
+    since start-up; torch cannot be imported a second time in one process ("already has a
+    docstring"). Exclude everything except this project's scene code from that unloading."""
+    try:
+        import SofaRuntime
+    except ImportError:
+        return
+    keep = getattr(SofaRuntime, '__SofaPythonEnvironment_modulesExcludedFromReload', None)
+    if keep is None:
+        return
+    pydeps = os.path.join(SCENES, '.pydeps')
+    for name, mod in list(sys.modules.items()):
+        f = getattr(mod, '__file__', None) or ''
+        if f.startswith(SCENES + os.sep) and not f.startswith(pydeps + os.sep):
+            continue                                     # our own modules: reload them
+        if name not in keep:
+            keep.append(name)
+
+
 def createScene(root):
     import torch
     torch.set_num_threads(1)
@@ -84,4 +104,5 @@ def createScene(root):
     # scene's pneumatics controller applies them (as VentricleNavEnv.step does)
     root.addObject(PolicyDriver(env, model, name='policy'))
     env.scene.createScene(root)
+    keep_libraries_on_reload()
     return root
