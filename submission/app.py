@@ -11,6 +11,7 @@ Tabs
   Live     runs SOFA now with a chosen policy (deterministic or sampled, any seed) and shows the
            result. Needs the SOFA build (submission/ENVIRONMENT.md); hidden otherwise.
 """
+import html
 import json
 import os
 import shutil
@@ -111,7 +112,7 @@ def figure(labels, step=None, animate=True):
         fig.update_layout(
             updatemenus=[dict(type='buttons', x=0.0, y=0.0, xanchor='left', yanchor='bottom', direction='left',
                               buttons=[dict(label='▶ Play', method='animate',
-                                            args=[None, dict(frame=dict(duration=80, redraw=True), fromcurrent=True,
+                                            args=[None, dict(frame=dict(duration=80, redraw=True), fromcurrent=False,
                                                              transition=dict(duration=0))]),
                                        dict(label='❚❚', method='animate',
                                             args=[[None], dict(frame=dict(duration=0), mode='immediate')])])],
@@ -125,6 +126,14 @@ def figure(labels, step=None, animate=True):
     return fig
 
 
+def as_html(fig):
+    """gr.Plot drops Plotly animation frames, so Play would do nothing: render the figure as a
+    self-contained page in an iframe, where Plotly's own Play button and slider work."""
+    page = fig.to_html(include_plotlyjs='cdn', full_html=True, auto_play=False, config=dict(displaylogo=False))
+    return (f'<iframe srcdoc="{html.escape(page, quote=True)}" '
+            f'style="width:100%;height:{fig.layout.height + 20}px;border:0"></iframe>')
+
+
 def replay(labels):
     labels = labels or []
     rows = []
@@ -133,7 +142,7 @@ def replay(labels):
         dep, tg, dev = metrics(rec, len(rec['rods']) - 1)
         rows.append([l, f'{dep:.0f}', f'{rec["goal_err"]:.2f}', f'{dev:.2f}',
                      'yes' if rec['goal_err'] <= 3 else 'no'])
-    return figure(labels), rows
+    return as_html(figure(labels)), rows
 
 
 # ---------------------------------------------------------------- live SOFA
@@ -171,7 +180,7 @@ def live(label, mode, seed, progress=gr.Progress()):
     summary = (f'**{label}**, {mode.lower()}, seed {int(seed)}: {len(rec["rods"]) - 1} RL steps, inserted {dep:.0f} mm, '
                f'goal error **{rec["goal_err"]:.2f} mm** ({"success" if rec["goal_err"] <= 3 else "no success"}), '
                f'robot body {dev:.2f} mm from the path.')
-    return figure(['live']), summary
+    return as_html(figure(['live'])), summary
 
 
 # ---------------------------------------------------------------- UI
@@ -185,7 +194,7 @@ with gr.Blocks(title='Soft-robot ventricle navigation (PPO + SOFA)') as demo:
         '(**v2**).')
     with gr.Tab('Replay'):
         pick = gr.CheckboxGroup(list(RUNS), value=list(RUNS)[:2], label='Insertions to show (recorded in SOFA, deterministic policies)')
-        plot = gr.Plot()
+        plot = gr.HTML()
         table = gr.Dataframe(headers=['run', 'inserted (mm)', 'goal error (mm)', 'body off path (mm)', 'success (≤ 3 mm)'],
                              interactive=False)
         pick.change(replay, pick, [plot, table])
@@ -205,7 +214,7 @@ with gr.Blocks(title='Soft-robot ventricle navigation (PPO + SOFA)') as demo:
             seed = gr.Number(value=1, precision=0, label='Seed')
             go_btn = gr.Button('Run SOFA', variant='primary')
         out_md = gr.Markdown()
-        out_plot = gr.Plot()
+        out_plot = gr.HTML()
         go_btn.click(live, [lab, mode, seed], [out_plot, out_md])
 
 if __name__ == '__main__':
