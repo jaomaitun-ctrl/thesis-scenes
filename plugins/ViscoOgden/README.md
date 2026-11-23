@@ -55,11 +55,20 @@ The plugin builds against the pixi SOFA in `~/Developer/sofa`:
 ```bash
 cd ~/Developer/sofa
 P=~/sofa/thesis-scenes/plugins/ViscoOgden; E=$PWD/.pixi/envs/supported-plugins
-pixi run -e supported-plugins bash -c "cmake -S $P -B $P/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$E && ninja -C $P/build"
+pixi run -e supported-plugins bash -c "cmake -S $P -B $P/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$E -DCMAKE_INSTALL_PREFIX=$E/plugins/ViscoOgden && ninja -C $P/build install"
+grep -q '^ViscoOgden ' $E/lib/plugin_list.conf || printf '\nViscoOgden 0.1\n' >> $E/lib/plugin_list.conf
 ```
 
-SOFA finds the plugin through `SOFA_PLUGIN_PATH=<this dir>/build`. Both `run.sh` and the
-SOFA.app launcher set it.
+The install step puts the plugin in the SOFA env (`$E/plugins/ViscoOgden`). Listing it in
+`$E/lib/plugin_list.conf` makes every runSofa / python-sofa from that env load it at start-up,
+with no environment variable: SOFA.app, the Terminal, `rl/run.sh`.
+
+- **After changing the C++:** re-run `ninja -C build install`. The env then gets the new
+  version.
+- **`run.sh`:** it sets `SOFA_PLUGIN_PATH=<this dir>/build`, so the tests use the fresh
+  build even before installing.
+- **If the env is reinstalled or SOFA rebuilt:** repeat both commands above. If
+  `plugin_list.conf` is missing, copy it from `plugin_list.conf.default` first.
 
 ## Validation (`tests/`, all pass)
 
