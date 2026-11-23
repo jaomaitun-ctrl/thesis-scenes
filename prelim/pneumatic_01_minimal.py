@@ -6,7 +6,7 @@ these same layers; only the meshes and numbers change.
 
 Run:
     cd ~/sofa
-    pixi run -e supported-plugins runSofa thesis-scenes/pneumatic_01_minimal.py
+    pixi run -e supported-plugins runSofa ~/sofa/thesis/prelim/pneumatic_01_minimal.py
 """
 import os
 import Sofa

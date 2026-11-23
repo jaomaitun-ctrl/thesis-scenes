@@ -1,5 +1,5 @@
 % Reference centrelines for the SOFA scene, one CSV per load case.
-%   matlab -batch "run('~/sofa/thesis-scenes/matlab/run_cases.m')"
+%   matlab -batch "run('~/sofa/thesis/prelim/matlab/run_cases.m')"
 % Writes ../matlab_refs/<case>.csv (soft-part centreline, metres, world/mesh frame).
 here = fileparts(mfilename('fullpath'));
 refs = fullfile(here, '..', 'matlab_refs');

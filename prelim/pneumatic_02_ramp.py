@@ -7,7 +7,7 @@ generalisation of `self.pressure.value.value = [p]` below.
 
 Run:
     cd ~/sofa
-    pixi run -e supported-plugins runSofa thesis-scenes/pneumatic_02_ramp.py
+    pixi run -e supported-plugins runSofa ~/sofa/thesis/prelim/pneumatic_02_ramp.py
 Then press Animate. Watch the terminal, not just the viewport.
 """
 import os

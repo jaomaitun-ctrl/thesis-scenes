@@ -54,7 +54,7 @@ The plugin builds against the pixi SOFA in `~/Developer/sofa`:
 
 ```bash
 cd ~/Developer/sofa
-P=~/sofa/thesis-scenes/plugins/ViscoOgden; E=$PWD/.pixi/envs/supported-plugins
+P=~/sofa/thesis/plugins/ViscoOgden; E=$PWD/.pixi/envs/supported-plugins
 pixi run -e supported-plugins bash -c "cmake -S $P -B $P/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$E -DCMAKE_INSTALL_PREFIX=$E/plugins/ViscoOgden && ninja -C $P/build install"
 grep -q '^ViscoOgden ' $E/lib/plugin_list.conf || printf '\nViscoOgden 0.1\n' >> $E/lib/plugin_list.conf
 ```

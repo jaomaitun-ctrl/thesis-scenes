@@ -4,7 +4,7 @@ observation and action mapping as rl/ventricle_env.py, so it reproduces rl/rollo
 --deterministic step for step).
 
     ROBOT_POLICY=rl/runs/<run>/final_model.zip  runSofa -l SofaPython3 -g imgui rl/policy_scene.py
-    (needs torch + stable-baselines3 on PYTHONPATH, e.g. thesis-scenes/.pydeps)
+    (needs torch + stable-baselines3 on PYTHONPATH, e.g. prelim/.pydeps)
 
 Every 10 simulation steps (one RL step, 0.1 s) the controller builds the 35-value observation,
 asks the policy for an action (deterministic) and sets the insertion depth and chamber
@@ -33,7 +33,7 @@ from ventricle_env import VentricleNavEnv  # noqa: E402
 _V2 = os.path.join('ppo_p44_server_v2_shape', 'final_model.zip')
 _CANDIDATES = [os.path.join(HERE, 'runs', _V2),                         # trained locally
                os.path.join(SCENES, 'results', _V2),                    # SoftRobot-Ventricle-PPO/sofa_rl
-               os.path.join(SCENES, 'submission', 'results', _V2)]      # thesis-scenes
+               os.path.join(SCENES, 'submission', 'results', _V2)]      # prelim/
 POLICY = os.environ.get('ROBOT_POLICY') or next((p for p in _CANDIDATES if os.path.exists(p)), _CANDIDATES[0])
 CASE = os.environ.get('ROBOT_CASE', 'design_patient44_right_r3_csf')
 WALL = os.environ.get('ROBOT_WALL', os.path.join(SCENES, 'walls', 'patient44_right_entryhole.stl'))

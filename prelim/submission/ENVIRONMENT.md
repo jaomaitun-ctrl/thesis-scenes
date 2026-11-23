@@ -12,7 +12,7 @@ Three levels of reproduction, from cheapest to full:
 ## Level A (analysis only)
 
 ```bash
-cd thesis-scenes/submission
+cd thesis-scenes/prelim/submission
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-analysis.txt
 jupyter notebook ventricle_rl_ppo.ipynb      # Run All; RUN_SOFA stays False
@@ -41,7 +41,7 @@ curl -fsSL https://pixi.sh/install.sh | bash
 CMAKE_BUILD_PARALLEL_LEVEL=5 pixi run -e supported-plugins install     # 1-2 h on 6 cores
 ```
 
-Then, in `thesis-scenes`, install the RL packages into `.pydeps` as described at the top of
+Then, in `thesis-scenes/prelim`, install the RL packages into `.pydeps` as described at the top of
 `requirements-rl.txt`. Run scripts with SOFA's interpreter:
 
 - macOS: `rl/run.sh <script>` (uses `python-sofa`; plain `python` crashes when importing Sofa)

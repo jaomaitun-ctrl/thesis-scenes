@@ -2,6 +2,6 @@ __pycache__/
 *.pyc
 .DS_Store
 .pydeps/
-rl/runs/
-rl/runs_*.log
-rl/export/
+prelim/rl/runs/
+prelim/rl/runs_*.log
+prelim/rl/export/

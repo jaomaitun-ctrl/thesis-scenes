@@ -1,4 +1,4 @@
-# Levels B/C: evaluate or retrain the policies. These go into thesis-scenes/.pydeps and are
+# Levels B/C: evaluate or retrain the policies. These go into prelim/.pydeps and are
 # imported by SOFA's Python 3.12 (python-sofa / the pixi env python), not a separate venv:
 #   pip install --target .pydeps --python-version 3.12 --only-binary=:all: \
 #       --extra-index-url https://download.pytorch.org/whl/cpu -r submission/requirements-rl.txt

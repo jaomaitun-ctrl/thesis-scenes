@@ -1,4 +1,4 @@
-"""Generate ventricle_rl_ppo.ipynb (run from thesis-scenes/submission; needs nbformat)."""
+"""Generate ventricle_rl_ppo.ipynb (run from prelim/submission; needs nbformat)."""
 import nbformat as nbf
 
 nb = nbf.v4.new_notebook()

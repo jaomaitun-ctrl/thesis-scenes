@@ -62,7 +62,7 @@ Run (GUI)  -- from the SOFA checkout that has the pixi env:
     cd ~/Developer/sofa
     ROBOT_CASE=kocher_head0_csf pixi run -e supported-plugins \
         .pixi/envs/supported-plugins/bin/runSofa -l SofaPython3 \
-        ~/sofa/thesis-scenes/cosserat_robot_01_from_matlab.py
+        ~/sofa/thesis/prelim/cosserat_robot_01_from_matlab.py
 Run (headless; writes matlab_refs/<case>_sofa.csv and prints the comparison):
     add  -g batch -n 610  to the command above.
 Ventricle wall + insertion (design_* cases; wall from tools/ventricle_wall.py):
