@@ -30,7 +30,11 @@ import Sofa.Core  # noqa: E402
 
 from ventricle_env import VentricleNavEnv  # noqa: E402
 
-POLICY = os.environ.get('ROBOT_POLICY', os.path.join(HERE, 'runs', 'ppo_p44_server_v2_shape', 'final_model.zip'))
+_V2 = os.path.join('ppo_p44_server_v2_shape', 'final_model.zip')
+_CANDIDATES = [os.path.join(HERE, 'runs', _V2),                         # trained locally
+               os.path.join(SCENES, 'results', _V2),                    # SoftRobot-Ventricle-PPO/sofa_rl
+               os.path.join(SCENES, 'submission', 'results', _V2)]      # thesis-scenes
+POLICY = os.environ.get('ROBOT_POLICY') or next((p for p in _CANDIDATES if os.path.exists(p)), _CANDIDATES[0])
 CASE = os.environ.get('ROBOT_CASE', 'design_patient44_right_r3_csf')
 WALL = os.environ.get('ROBOT_WALL', os.path.join(SCENES, 'walls', 'patient44_right_entryhole.stl'))
 DETERMINISTIC = os.environ.get('ROBOT_POLICY_STOCHASTIC', '0') != '1'
@@ -94,15 +98,19 @@ def keep_libraries_on_reload():
 
 
 def createScene(root):
-    import torch
-    torch.set_num_threads(1)
-    from stable_baselines3 import PPO
+    try:
+        import torch
+        torch.set_num_threads(1)
+        from stable_baselines3 import PPO
+        if not os.path.exists(POLICY):
+            raise FileNotFoundError(f'policy not found: {POLICY} (set ROBOT_POLICY=<path to final_model.zip>)')
 
-    env = VentricleNavEnv(case=CASE, wall=WALL)     # sets ROBOT_RL=1 etc. and imports the scene module
-    model = PPO.load(POLICY, device='cpu')
-    # added before the robot so that, within each step, it updates the commands before the
-    # scene's pneumatics controller applies them (as VentricleNavEnv.step does)
-    root.addObject(PolicyDriver(env, model, name='policy'))
-    env.scene.createScene(root)
-    keep_libraries_on_reload()
+        env = VentricleNavEnv(case=CASE, wall=WALL)     # sets ROBOT_RL=1 etc. and imports the scene module
+        model = PPO.load(POLICY, device='cpu')
+        # added before the robot so that, within each step, it updates the commands before the
+        # scene's pneumatics controller applies them (as VentricleNavEnv.step does)
+        root.addObject(PolicyDriver(env, model, name='policy'))
+        env.scene.createScene(root)
+    finally:
+        keep_libraries_on_reload()      # also after a failed load, so torch survives the next open/reload
     return root
